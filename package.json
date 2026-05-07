@@ -1,6 +1,6 @@
 {
   "name": "@banodoco/timeline-composition",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "private": true,
   "description": "Banodoco timeline Remotion composition. Sprint 5: physical lift of TimelineComposition + theme-api + codegen plugin registry. Theme packages are external peer-dep `@banodoco/timeline-theme-<id>` packages.",
   "type": "module",
