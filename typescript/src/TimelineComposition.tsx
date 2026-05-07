@@ -72,7 +72,16 @@ const renderVisualClipContent = (
   );
   if (effectId) {
     const EffectComponent = EFFECT_REGISTRY[effectId];
-    return <EffectComponent clip={clip} params={resolveParams(clip)} theme={theme} fps={fps} />;
+    const assetEntry = getAssetEntry(clip, assets);
+    return (
+      <EffectComponent
+        clip={clip}
+        params={resolveParams(clip)}
+        theme={theme}
+        fps={fps}
+        assetEntry={assetEntry}
+      />
+    );
   }
 
   const assetEntry = getAssetEntry(clip, assets);
