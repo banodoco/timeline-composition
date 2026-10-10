@@ -14,6 +14,29 @@ via the codemod at `tools/scripts/codemod-theme-api-imports.ts`.
 
 The actual composition extraction lands in Sprint 5 (Phase 4d).
 
+## Transitions
+
+A clip's `transition` (on the clip that starts the boundary, i.e. the outgoing clip) joins it to the next clip on the same track. The next clip must start within one frame of the outgoing clip's end (or exactly at it); otherwise the transition is ignored and the boundary is a cut. A transition longer than either clip is also ignored.
+
+- **Placement** is set by `align` on the transition object. `'end'` (the default, upstream's placement) puts the overlap window in the `T` frames before the boundary, so the incoming clip starts inside it. `'start'` puts it in the `T` frames after the boundary, and `'center'` centres it on the boundary.
+- **Dissolve** (any id other than `fade`, e.g. `cross-fade`): the incoming clip ramps 0 to 1 over the window while the outgoing clip stays fully opaque underneath, so there is no hole in the frame.
+- **Dip** (`fade`): the outgoing clip ramps 1 to 0 over the first half of the window, then the incoming clip ramps 0 to 1 over the second half. The background shows through at the midpoint, on purpose.
+- **Extension frames**: a clip that is pulled into a window beyond its own span is drawn over the extra frames but shows itself frozen at its boundary frame, so its own timing never shifts. The outgoing clip is extended past its end; the incoming clip is extended back before its start.
+- **Chains** (A to B to C): each boundary is planned independently. B is extended back for the A to B window and, if its own boundary to C runs past B's end, forward too. Each clip is drawn in track order, so later clips sit on top.
+
+The planning is pure and lives in `typescript/src/lib/transition-spans.ts`.
+
+## Speed
+
+`clip.speed` is a playback rate, and the clip's length is its hold divided by `speed` (speed 2 halves the length).
+
+- **Media clips** (`VisualClip`, `AudioTrack`) apply `speed` as `playbackRate` on the media itself, so the footage plays faster or slower.
+- **Element clips** do not use `playbackRate`. The element sees `useCurrentFrame() = floor(local × speed)`, so speed 2 plays its animation twice as fast in half the length, and speed 0.5 plays it at half speed over twice the length. The entrance and exit windows stay in timeline frames, as before.
+- A footage element (`am-footage`) reads the current frame for its video, so it plays at the clip's speed with no element change. An element must not set `playbackRate` itself, or the speed would apply twice.
+- Invalid speeds (not a finite number above 0) act as 1.
+
+The element remap is a `<Freeze>` around the element content, applied in `ClipLook.tsx`. The sanitising and frame math is pure and lives in `typescript/src/lib/clip-look.ts` (`clipSpeed`, `remappedFrame`).
+
 ## Build / test
 
 ```

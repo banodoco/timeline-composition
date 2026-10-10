@@ -8,5 +8,5 @@
     "isolatedModules": false,
     "skipLibCheck": true
   },
-  "include": ["tests/scaffold.test.ts"]
+  "include": ["tests/scaffold.test.ts", "tests/clip-look.test.ts", "tests/transition-spans.test.ts"]
 }
