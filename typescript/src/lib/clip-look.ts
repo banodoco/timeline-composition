@@ -2,8 +2,8 @@
 // node tests can compile and run this module directly.
 
 import type {TimelineClip} from '../types';
-import {getClipDurationInFrames, secondsToFrames} from './duration.js';
-import {normalizeRenderCropValues} from './render-bounds.js';
+import {getClipDurationInFrames, secondsToFrames} from './duration';
+import {normalizeRenderCropValues} from './render-bounds';
 
 // Structurally identical to effects-types AnimationReferenceList (kept local so
 // this module imports nothing that pulls in react or remotion).
