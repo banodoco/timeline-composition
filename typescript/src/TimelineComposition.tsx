@@ -8,6 +8,7 @@
 import type {ReactElement} from 'react';
 import {AbsoluteFill, Sequence, useVideoConfig} from 'remotion';
 import {AudioTrack} from './AudioTrack';
+import {ClipLook} from './ClipLook';
 import {CLIP_TYPE_ALIASES, EFFECT_REGISTRY, type EffectId} from './effects.generated';
 import {DEFAULT_THEME, ThemeProvider, useTheme} from './ThemeContext';
 import {VisualClip} from './VisualClip';
@@ -74,13 +75,15 @@ const renderVisualClipContent = (
     const EffectComponent = EFFECT_REGISTRY[effectId];
     const assetEntry = getAssetEntry(clip, assets);
     return (
-      <EffectComponent
-        clip={clip}
-        params={resolveParams(clip)}
-        theme={theme}
-        fps={fps}
-        assetEntry={assetEntry}
-      />
+      <ClipLook clip={clip} fps={fps} kind="element">
+        <EffectComponent
+          clip={clip}
+          params={resolveParams(clip)}
+          theme={theme}
+          fps={fps}
+          assetEntry={assetEntry}
+        />
+      </ClipLook>
     );
   }
 
@@ -90,25 +93,27 @@ const renderVisualClipContent = (
   );
 
   if (hasPositionOverride(clip)) {
-    return baseVisual;
+    return <ClipLook clip={clip} fps={fps} kind="media">{baseVisual}</ClipLook>;
   }
 
   if ((track.scale ?? 1) !== 1) {
     return (
-      <AbsoluteFill
-        style={{
-          transform: `scale(${track.scale})`,
-          transformOrigin: 'center center',
-          overflow: 'hidden',
-          isolation: 'isolate',
-        }}
-      >
-        {baseVisual}
-      </AbsoluteFill>
+      <ClipLook clip={clip} fps={fps} kind="media">
+        <AbsoluteFill
+          style={{
+            transform: `scale(${track.scale})`,
+            transformOrigin: 'center center',
+            overflow: 'hidden',
+            isolation: 'isolate',
+          }}
+        >
+          {baseVisual}
+        </AbsoluteFill>
+      </ClipLook>
     );
   }
 
-  return baseVisual;
+  return <ClipLook clip={clip} fps={fps} kind="media">{baseVisual}</ClipLook>;
 };
 
 const renderVisualSequence = (
