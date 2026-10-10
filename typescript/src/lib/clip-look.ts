@@ -153,3 +153,15 @@ export const animationElapsed = (
   const exitStart = clipFrames - durationFrames;
   return frame >= exitStart ? frame - exitStart : null;
 };
+
+// Sanitises clip.speed the same way getSanitizedPlaybackRate does: a finite
+// number greater than 0, otherwise 1.
+export const clipSpeed = (speed: unknown): number =>
+  typeof speed === 'number' && Number.isFinite(speed) && speed > 0 ? speed : 1;
+
+// Element clips remap time by speed: the element sees floor(local * speed) as its
+// frame, so speed 2 runs its animation twice as fast. Identity when speed is 1.
+export const remappedFrame = (frame: number, speed: unknown): number => {
+  const s = clipSpeed(speed);
+  return s === 1 ? frame : Math.floor(frame * s);
+};

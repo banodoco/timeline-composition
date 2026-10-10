@@ -3,9 +3,16 @@
 // clip's Sequence, so useCurrentFrame() is clip-local.
 
 import type {CSSProperties, ReactNode} from 'react';
-import {AbsoluteFill, useCurrentFrame} from 'remotion';
+import {AbsoluteFill, Freeze, useCurrentFrame} from 'remotion';
 import {composeAnimations, resolveAnimationReferences} from './lib/animations';
-import {animationElapsed, clipOpacity, cropClipPath, normalizeAnimationRefs} from './lib/clip-look';
+import {
+  animationElapsed,
+  clipOpacity,
+  clipSpeed,
+  cropClipPath,
+  normalizeAnimationRefs,
+  remappedFrame,
+} from './lib/clip-look';
 import {getClipDurationInFrames} from './lib/duration';
 import {useTheme} from './ThemeContext';
 import type {TimelineClip} from './types';
@@ -27,6 +34,9 @@ export const ClipLook = ({clip, fps, kind, children}: ClipLookProps) => {
   // Media clips already get opacity (with fade) and crop from VisualClip, so
   // they must not be styled here as well.
   const style: CSSProperties = {};
+  // Element speed remaps time (see README "Speed"). Decided by speed, not by the
+  // frame, so the tree shape stays the same for the whole clip.
+  const remapElement = kind === 'element' && clipSpeed(clip.speed) !== 1;
   if (kind === 'element') {
     const opacity = clipOpacity(clip, frame, fps);
     if (opacity !== 1) {
@@ -63,7 +73,11 @@ export const ClipLook = ({clip, fps, kind, children}: ClipLookProps) => {
     });
   };
 
-  let content: ReactNode = wrapPhase('entrance', clip.entrance, children);
+  const body: ReactNode = remapElement
+    ? <Freeze frame={remappedFrame(frame, clip.speed)}>{children}</Freeze>
+    : children;
+
+  let content: ReactNode = wrapPhase('entrance', clip.entrance, body);
   content = wrapPhase('exit', clip.exit, content);
 
   return (

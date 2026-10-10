@@ -26,6 +26,17 @@ A clip's `transition` (on the clip that starts the boundary, i.e. the outgoing c
 
 The planning is pure and lives in `typescript/src/lib/transition-spans.ts`.
 
+## Speed
+
+`clip.speed` is a playback rate, and the clip's length is its hold divided by `speed` (speed 2 halves the length).
+
+- **Media clips** (`VisualClip`, `AudioTrack`) apply `speed` as `playbackRate` on the media itself, so the footage plays faster or slower.
+- **Element clips** do not use `playbackRate`. The element sees `useCurrentFrame() = floor(local × speed)`, so speed 2 plays its animation twice as fast in half the length, and speed 0.5 plays it at half speed over twice the length. The entrance and exit windows stay in timeline frames, as before.
+- A footage element (`am-footage`) reads the current frame for its video, so it plays at the clip's speed with no element change. An element must not set `playbackRate` itself, or the speed would apply twice.
+- Invalid speeds (not a finite number above 0) act as 1.
+
+The element remap is a `<Freeze>` around the element content, applied in `ClipLook.tsx`. The sanitising and frame math is pure and lives in `typescript/src/lib/clip-look.ts` (`clipSpeed`, `remappedFrame`).
+
 ## Build / test
 
 ```

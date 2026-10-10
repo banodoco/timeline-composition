@@ -6,6 +6,7 @@ import {
   cropClipPath,
   fadeMultiplier,
   normalizeAnimationRefs,
+  remappedFrame,
 } from "../src/lib/clip-look.js";
 import type {TimelineClip} from "../src/types.js";
 
@@ -154,4 +155,35 @@ test("animationElapsed: exit window is the last durationFrames of the clip", () 
   assert.equal(animationElapsed("exit", 59, 60, 12), 11);
   assert.equal(animationElapsed("exit", 60, 60, 12), 12);
   assert.equal(animationElapsed("exit", 10, 60, 0), null);
+});
+
+test("remappedFrame: speed 1 is the identity", () => {
+  assert.equal(remappedFrame(0, 1), 0);
+  assert.equal(remappedFrame(7, 1), 7);
+  assert.equal(remappedFrame(7, undefined), 7);
+});
+
+test("remappedFrame: speed 2 advances twice as fast, floored", () => {
+  assert.equal(remappedFrame(0, 2), 0);
+  assert.equal(remappedFrame(3, 2), 6);
+  assert.equal(remappedFrame(10, 2), 20);
+});
+
+test("remappedFrame: speed 0.5 advances at half speed, floored", () => {
+  assert.equal(remappedFrame(0, 0.5), 0);
+  assert.equal(remappedFrame(1, 0.5), 0);
+  assert.equal(remappedFrame(2, 0.5), 1);
+  assert.equal(remappedFrame(7, 0.5), 3);
+});
+
+test("remappedFrame: speed 1.5 floors the product", () => {
+  assert.equal(remappedFrame(1, 1.5), 1);
+  assert.equal(remappedFrame(2, 1.5), 3);
+  assert.equal(remappedFrame(3, 1.5), 4);
+});
+
+test("remappedFrame: invalid speeds (0, negative, NaN, undefined, string) act as 1", () => {
+  for (const bad of [0, -1, Number.NaN, undefined, "2"]) {
+    assert.equal(remappedFrame(5, bad), 5, `speed ${String(bad)}`);
+  }
 });
