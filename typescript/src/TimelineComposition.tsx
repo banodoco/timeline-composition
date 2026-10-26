@@ -6,7 +6,7 @@ import type {SceneCapabilities} from './scene-capabilities';
 // Banodoco's CLI render path passes the new id; the in-tree shell at
 // tools/remotion/src/Root.tsx imports this composition from the package.
 
-import type {ReactElement} from 'react';
+import {useMemo, type ReactElement} from 'react';
 import {AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig} from 'remotion';
 import {AudioTrack} from './AudioTrack';
 import {ClipLook} from './ClipLook';
@@ -269,16 +269,14 @@ const renderVisualTrack = (
   theme: ReturnType<typeof useTheme>,
   globalFrame: number,
   modifiers: ModifierHostOptions,
+  prepared: ReturnType<typeof prepareCompositionScene>,
 ): ReactElement | null => {
-  const sortedClips = sortClipsByAt(clips);
-  if (sortedClips.length === 0) {
+  if (clips.length === 0) {
     return null;
   }
 
-  const prepared = prepareCompositionScene([{track, clips: sortedClips}], assets, fps, theme,
-    modifiers.width, modifiers.height, modifiers.registry, undefined, {}, '', {}, modifiers.registries, modifiers.compiledTransitions);
   const evaluated = querySceneFrame(prepared, globalFrame);
-  const rendered = evaluated.layers.map(layer => renderVisualSequence(track, sortedClips[layer.clipIndex],
+  const rendered = evaluated.layers.map(layer => renderVisualSequence(track, clips[layer.clipIndex],
     assets, fps, theme, prepared.tracks[0].prepared.plans[layer.clipIndex], globalFrame, modifiers));
 
   return (
@@ -318,9 +316,12 @@ export const renderAudioTrack = (
 export const TimelineComposition = (props: TimelineCompositionProps): ReactElement => {
   const {timeline, assets} = props;
   const {fps, width, height} = useVideoConfig();
-  validateCompiledCanonicalTransitions(props.compiledTransitions, fps);
-  const visualTracks = [...getVisualTracks(timeline)].reverse();
-  const audioTracks = getAudioTracks(timeline);
+  // Props are immutable snapshots. Validate once per compiled input / render
+  // clock instead of repeating a whole-vector walk on every Remotion frame.
+  useMemo(() => validateCompiledCanonicalTransitions(props.compiledTransitions, fps),
+    [props.compiledTransitions, fps]);
+  const visualTracks = useMemo(() => [...getVisualTracks(timeline)].reverse(), [timeline]);
+  const audioTracks = useMemo(() => getAudioTracks(timeline), [timeline]);
 
   return (
     <AbsoluteFill
@@ -369,13 +370,23 @@ const TimelineCompositionBody = ({
 }): ReactElement => {
   const theme = useTheme();
   const globalFrame = useCurrentFrame();
+  // Scene preparation contains sorting, transition planning, registry
+  // resolution and component capability setup. Those depend on composition
+  // inputs, not the current frame. Keep a prepared scene per track and only
+  // query its frame-dependent result below.
+  const preparedVisualTracks = useMemo(() => visualTracks.map(track => {
+    const clips = sortClipsByAt(timeline.clips.filter(clip => clip.track === track.id));
+    const prepared = prepareCompositionScene([{track, clips}], assets, fps, theme,
+      modifiers.width, modifiers.height, modifiers.registry, undefined, {}, '', {},
+      modifiers.registries, modifiers.compiledTransitions);
+    return {track, clips, prepared};
+  }), [timeline, assets, visualTracks, fps, theme, modifiers.width, modifiers.height,
+    modifiers.registry, modifiers.registries, modifiers.compiledTransitions]);
   return (
     <>
       <AbsoluteFill style={{position: 'relative', overflow: 'hidden'}}>
-        {visualTracks.map((track) => {
-          const clips = timeline.clips.filter((clip) => clip.track === track.id);
-          return renderVisualTrack(track, clips, assets, fps, theme, globalFrame, modifiers);
-        })}
+        {preparedVisualTracks.map(({track, clips, prepared}) =>
+          renderVisualTrack(track, clips, assets, fps, theme, globalFrame, modifiers, prepared))}
       </AbsoluteFill>
       {audioTracks.map((track) => {
         const clips = timeline.clips.filter((clip) => clip.track === track.id);
