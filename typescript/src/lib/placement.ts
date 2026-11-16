@@ -90,7 +90,7 @@ const geometry = ['x', 'y', 'width', 'height', 'cropTop', 'cropBottom', 'cropLef
 export type PlacementMigrationFinding = {
     trackId?: string;
     clipId?: string;
-    kind: 'scale-bake' | 'explicit-fit' | 'markers' | 'canvas';
+    kind: 'scale-bake' | 'explicit-fit' | 'markers' | 'canvas' | 'canvas-not-required';
     source?: string;
     before?: unknown;
     after?: unknown;
@@ -121,9 +121,8 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {
     }
     const [w, h] = (output?.resolution ?? '').toLowerCase().split('x').map(Number);
     const hasCanvas = Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0 && /^\d+x\d+$/i.test(output?.resolution ?? '');
-    const visualIds = new Set((config.tracks ?? []).filter(track => track.kind === 'visual').map(track => track.id));
-    if (!hasCanvas && config.clips.some(clip => visualIds.has(clip.track) && !!clip.asset))
-        throw new Error('Timeline property output.resolution is required for visual media');
+    if (output?.resolution !== undefined && !hasCanvas)
+        throw new Error('Timeline property output.resolution is invalid');
     const canvas = { width: w, height: h };
     let clips = config.clips;
     const tracks = (config.tracks ?? []).map(track => {
@@ -134,13 +133,15 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {
         const needsBake = track.kind === 'visual' && bake && (track.scale ?? 1) !== 1 && clips.some(clip => clip.track === track.id && geometry.some(k => clip[k] !== undefined));
         if (needsBake && !hasCanvas)
             throw new Error(`Track '${track.id}' property output.resolution is required for scale migration`);
-        const transform = resolveTrackTransform(track, hasCanvas ? canvas : { width: 0, height: 0 });
+        if (track.scale !== undefined && (!Number.isFinite(track.scale) || track.scale <= 0))
+            throw new Error(`Track '${track.id}' property scale must be positive`);
+        const transform = needsBake ? resolveTrackTransform(track, canvas) : undefined;
         clips = clips.map(clip => {
             if (track.kind !== 'visual' || clip.track !== track.id)
                 return clip;
             const positioned = geometry.some(k => clip[k] !== undefined);
             let result = clip;
-            if (bake && positioned && transform.forward.scale !== 1) {
+            if (needsBake && positioned && transform) {
                 const full = { x: clip.x ?? 0, y: clip.y ?? 0, width: clip.width ?? canvas.width, height: clip.height ?? canvas.height };
                 const rect = transformPlacementRect(full, transform.inverse);
                 const round = (v: number) => Math.round(v * 100) / 100;
@@ -158,6 +159,7 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {
             findings.push({ trackId: track.id, kind: 'markers', markerCount });
         return { ...track, app: { ...track.app, scaleAppliesToPositionedClips: true, clipPlacementVersion: 1 } };
     });
+    if (!hasCanvas) findings.push({kind:'canvas-not-required', source:'no-canvas-dependent-scale-bake'});
     return { config: { ...config, ...(output !== config.output ? {output} : {}), tracks, clips }, findings };
 };
 export const normalizeClipPlacement = (config: TimelineConfig): TimelineConfig => normalizeClipPlacementWithFindings(config).config;

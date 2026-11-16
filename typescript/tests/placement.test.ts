@@ -63,8 +63,21 @@ test('migration findings expose changes and vanish after normalization', () => {
   assert.deepEqual(normalizeClipPlacementWithFindings(result.config).findings,[]);
 });
 
-test('media normalization requires its authored output resolution', () => {
-  assert.throws(() => normalizeClipPlacement({theme:'default',tracks:[track],clips:[{...clip,asset:'a'}]}),/output.resolution/);
+test('canvasless normalization proves no bake needs a canvas and refuses dependent bake', () => {
+  const input = {theme:'default', tracks:[{...track,scale:2,app:{scaleAppliesToPositionedClips:true}}], clips:[{...clip,asset:'a'}]};
+  const result = normalizeClipPlacementWithFindings(input);
+  assert.equal(result.config.output,undefined);
+  assert.deepEqual(result.findings.find(f=>f.kind==='canvas-not-required'),{kind:'canvas-not-required',source:'no-canvas-dependent-scale-bake'});
+  assert.equal(result.config.clips[0].fit,undefined);
+  const unit = normalizeClipPlacementWithFindings({...input,tracks:[{...track,scale:1}],clips:[{...clip,asset:'a',x:0}]});
+  assert.equal(unit.config.output,undefined);
+  assert.equal(unit.config.clips[0].fit,'cover');
+  assert.ok(unit.findings.some(f=>f.kind==='canvas-not-required'));
+  assert.deepEqual(normalizeClipPlacement(unit.config),unit.config);
+  for (const geometry of [{x:0},{cropLeft:0}]) {
+    assert.throws(()=>normalizeClipPlacement({...input,tracks:[{...track,scale:2}],clips:[{...clip,asset:'a',...geometry}]}),/v.*output.resolution.*scale migration/);
+  }
+  assert.throws(()=>normalizeClipPlacement({...input,output:{resolution:'bad'}}),/output.resolution/);
 });
 test('audio markers and other metadata survive without changing clip geometry', () => {
   const audio = {...track, id:'a',kind:'audio' as const,app:{other:'kept'}};
