@@ -306,11 +306,12 @@ export const TimelineComposition = (props: TimelineCompositionProps): ReactEleme
   const {assets} = props;
   const {fps, width, height} = useVideoConfig();
   const timeline = useMemo(() => {
-    const resolution = (props.timeline.output as {resolution?: string} | undefined)?.resolution;
+    const normalized = normalizeClipPlacement(props.timeline);
+    const resolution = (normalized.output as {resolution?: string} | undefined)?.resolution;
     if (resolution !== undefined && resolution.toLowerCase() !== `${width}x${height}`) {
       throw new Error(`Timeline property output.resolution '${resolution}' does not match render canvas ${width}x${height}`);
     }
-    return normalizeClipPlacement(props.timeline);
+    return normalized;
   }, [props.timeline, width, height]);
   // Props are immutable snapshots. Validate once per compiled input / render
   // clock instead of repeating a whole-vector walk on every Remotion frame.

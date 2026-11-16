@@ -74,3 +74,20 @@ test('audio markers and other metadata survive without changing clip geometry', 
   assert.deepEqual(result.tracks?.[0].app,{other:'kept',scaleAppliesToPositionedClips:true,clipPlacementVersion:1});
   assert.throws(() => normalizeClipPlacement({theme:'default',tracks:[{...audio,app:{clipPlacementVersion:2}}],clips:[]}),/a.*clipPlacementVersion/);
 });
+test('authored complete legacy canvas materializes once without mutating input', () => {
+  const input = {theme:'default',theme_overrides:{visual:{canvas:{width:1280,height:720,fps:24}}},tracks:[track],clips:[{...clip,asset:'a'}]};
+  const before = JSON.stringify(input);
+  const result = normalizeClipPlacementWithFindings(input);
+  assert.deepEqual(result.config.output,{resolution:'1280x720',fps:24,file:'output.mp4'});
+  assert.deepEqual(result.findings.find(f=>f.kind==='canvas'),{kind:'canvas',source:'theme_overrides.visual.canvas',before:undefined,after:{resolution:'1280x720',fps:24,file:'output.mp4'}});
+  assert.equal(JSON.stringify(input),before);
+  assert.deepEqual(normalizeClipPlacementWithFindings(result.config).findings,[]);
+  const existing = {...input,output:{resolution:'1920x1080'}};
+  assert.deepEqual(normalizeClipPlacement(existing).output,existing.output);
+  const preserved = normalizeClipPlacement({...input,output:{file:'mine.mp4',fps:24,extra:'kept'}});
+  assert.deepEqual(preserved.output,{file:'mine.mp4',fps:24,extra:'kept',resolution:'1280x720'});
+  for (const canvas of [{width:1280,height:720},{width:1280,height:-1,fps:24},{width:1280.5,height:720,fps:24}]) {
+    assert.throws(()=>normalizeClipPlacement({...input,theme_overrides:{visual:{canvas}}}),/theme_overrides.visual.canvas/);
+  }
+  assert.throws(()=>normalizeClipPlacement({...input,output:{fps:30}}),/output.fps/);
+});

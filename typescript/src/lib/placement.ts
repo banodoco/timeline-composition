@@ -88,9 +88,10 @@ export const resolveClipPlacement = ({ clip, track, canvas, intrinsic }: Placeme
 };
 const geometry = ['x', 'y', 'width', 'height', 'cropTop', 'cropBottom', 'cropLeft', 'cropRight'] as const;
 export type PlacementMigrationFinding = {
-    trackId: string;
+    trackId?: string;
     clipId?: string;
-    kind: 'scale-bake' | 'explicit-fit' | 'markers';
+    kind: 'scale-bake' | 'explicit-fit' | 'markers' | 'canvas';
+    source?: string;
     before?: unknown;
     after?: unknown;
     markerCount?: number;
@@ -100,9 +101,24 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {
     findings: PlacementMigrationFinding[];
 } => {
     const findings: PlacementMigrationFinding[] = [];
-    const output = config.output as {
-        resolution?: string;
-    } | undefined;
+    let output = config.output as {resolution?: string; fps?: number; file?: string; [key: string]: unknown} | undefined;
+    const overrides = config.theme_overrides as {visual?: {canvas?: unknown}} | undefined;
+    const authoredCanvas = overrides?.visual?.canvas;
+    if (output?.resolution === undefined && authoredCanvas !== undefined) {
+        if (!authoredCanvas || typeof authoredCanvas !== 'object' || Array.isArray(authoredCanvas)) {
+            throw new Error('Timeline property theme_overrides.visual.canvas must contain positive width, height and fps');
+        }
+        const source = authoredCanvas as {width?: unknown; height?: unknown; fps?: unknown};
+        if (!Number.isSafeInteger(source.width) || (source.width as number) <= 0 || !Number.isSafeInteger(source.height) || (source.height as number) <= 0 || typeof source.fps !== 'number' || !Number.isFinite(source.fps) || source.fps <= 0) {
+            throw new Error('Timeline property theme_overrides.visual.canvas must contain positive integer width and height and positive fps');
+        }
+        if (output?.fps !== undefined && output.fps !== source.fps) {
+            throw new Error('Timeline property output.fps disagrees with theme_overrides.visual.canvas.fps');
+        }
+        const before = output;
+        output = {...output, resolution: `${source.width}x${source.height}`, fps: output?.fps ?? source.fps, file: output?.file ?? 'output.mp4'};
+        findings.push({kind:'canvas', source:'theme_overrides.visual.canvas', before, after:output});
+    }
     const [w, h] = (output?.resolution ?? '').toLowerCase().split('x').map(Number);
     const hasCanvas = Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0 && /^\d+x\d+$/i.test(output?.resolution ?? '');
     const visualIds = new Set((config.tracks ?? []).filter(track => track.kind === 'visual').map(track => track.id));
@@ -142,6 +158,6 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {
             findings.push({ trackId: track.id, kind: 'markers', markerCount });
         return { ...track, app: { ...track.app, scaleAppliesToPositionedClips: true, clipPlacementVersion: 1 } };
     });
-    return { config: { ...config, tracks, clips }, findings };
+    return { config: { ...config, ...(output !== config.output ? {output} : {}), tracks, clips }, findings };
 };
 export const normalizeClipPlacement = (config: TimelineConfig): TimelineConfig => normalizeClipPlacementWithFindings(config).config;
