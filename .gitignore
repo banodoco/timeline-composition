@@ -2,6 +2,7 @@ node_modules/
 typescript/dist/
 typescript/test-dist/
 dist/
+source.json
 *.tgz
 !artifacts/banodoco-timeline-composition-0.0.17.tgz
 typescript/src/lib/remotion-primitives.generated.js

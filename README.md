@@ -1,16 +1,21 @@
 # @banodoco/timeline-composition
 
-Version 0.0.14 ships built ESM and declarations for the timeline evaluator,
+Version 0.0.18 ships built ESM and declarations for the timeline evaluator,
 Remotion composition, theme API and default registries. Plain Node can import
 `@banodoco/timeline-composition/evaluation` without React, Remotion or a TypeScript
 loader. The renderer uses host peers React/React DOM 18.3.1 and
 Remotion/media/layout-utils 4.0.509; those runtimes are never bundled.
 
+Every build writes a root `source.json` containing the repository URL, full
+source commit SHA and whether the checkout had tracked or untracked changes.
+The file contains no build time, so the metadata is stable for a given checkout.
+Release CI requires a clean checkout and checks the SHA against `GITHUB_SHA`.
+
 The package owns text-card (including the `text` alias), six animations, two
 transitions and four 2rp effects relocated from App. The bundled 2rp source is
 **0.1.0**; equivalence to the separately referenced 0.1.1 theme is unverified.
 Fonts, media and project pack admission remain host responsibilities. The
-qualified 0.0.14 archive is 80 regular members, SHA-256
+historically qualified 0.0.14 archive was 80 regular members, SHA-256
 `21fde4d2a5d62a83f97a85d4b8d9f9d3f707a6489c07eb421c6331eccf893e6e`, from
 source commit `df7b86308902fae90eda1dc3080d17d8fc30ea78`.
 
@@ -396,26 +401,24 @@ implied by this package.
 
 ## Build, package and verify
 
-Use the qualified 0.0.14 archive at
-`/tmp/claude-0/-home-user-repo/7dc61be1-7066-52e0-a5d0-94f90e61430a/scratchpad/orch/artifacts/banodoco-timeline-composition-0.0.14.tgz`.
-The package-smoke installed integrity is
-`sha512-Bgf9lHdk3CJCTsA3Jbd5WW9UYCHEZQTF3VFM1YO6dimZ+q8bQ8cX6CZ4FCfClBNgg10DQ1bozGMqFCpkGNXvvw==`.
-The 0.0.13/77-member archive remains historical evidence and is not the
-current setup instruction.
+Release CI builds and tests the source, packs the artifact, writes a SHA-256
+checksum, and verifies that the archive contains `package/source.json`. The
+metadata records its source commit and dirty state. The 0.0.14 and 0.0.13
+archives below remain historical qualification evidence, not current setup
+instructions.
 
 The canonical checks from the real Composition root are:
 
 ```sh
-cd /home/user/work/composition
+npm ci
 make build
 make test
-npm run test:package -- \
-  /tmp/claude-0/-home-user-repo/7dc61be1-7066-52e0-a5d0-94f90e61430a/scratchpad/orch/artifacts/banodoco-timeline-composition-0.0.14.tgz
+npm pack
 ```
 
 `make build` runs registry-drift checks, strict TypeScript/declaration checks,
 and the ESM build; `make test` runs the repository suite. The package smoke
-must receive the exact artifact path above and checks public Node imports,
+receives the path of the artifact under test and checks public Node imports,
 scoped registration/capabilities, peer identity, declarations and installed
 file immutability. It does not prove browser pixels, Player audio, or film
 parity.
@@ -475,28 +478,27 @@ comparison and real Player/export frame/audio parity remain separate integration
 gates. The historical 0.0.11/0.0.12 package records remain historical; they are
 not setup instructions for the current route.
 
-## Current qualification boundary
+## Historical 0.0.14 qualification record
 
-The qualified package source is Composition commit
+The last previously qualified package source was Composition commit
 `df7b86308902fae90eda1dc3080d17d8fc30ea78`, tree
 `71d8e95edb1bb2d187c3193ef3462d4cfde277fa`, published as 0.0.14. Its source
 full suite recorded 85 passed, zero failed/skipped, and the exact package smoke
 passed plain Node ESM/SSR, peer identity, scoped host capability, strict
-NodeNext declarations and installed-file integrity. This qualifies the package
-artifact, not consumer adoption.
+NodeNext declarations and installed-file integrity. Version 0.0.18 requires
+its own CI qualification; this historical result does not qualify it or
+consumer adoption.
 
-Physical Gate 6 remains **OPEN**. The latest corrected readiness/physical
-attempt failed before all five comparison bodies: 0 executed, 5 not run, and
-no media was produced. The still-unrun gate cases are native-size Player vs
-CPU-export frames, Player PCM against the same export, a picture-only planted
-mismatch, and a half-gain audio negative (with the required normal positive
-case). The farm packet is held; no browser, live socket, physical run, or
-parity claim belongs in this page until that gate passes.
+At the time of that qualification, Physical Gate 6 was **OPEN**. The corrected
+readiness/physical attempt failed before all five comparison bodies: 0
+executed, 5 not run, and no media was produced. This historical status does
+not describe the current release candidate.
 
-Also unrun or still open: coordinated Agent/App 0.0.14 consumer pin and route
-journey evidence, whole-project ZIP application to fresh main, and owner-film
-viewing. Scanner108 payload `204a` and `instructions969` remain immutable
-delivery inputs; this page does not edit or replace either one.
+The 0.0.14 record also listed Agent/App consumer pin and route journey
+evidence, whole-project ZIP application to fresh main, and owner-film viewing
+as unrun. Those were release-specific follow-ups, not status claims for 0.0.18.
+Scanner108 payload `204a` and `instructions969` were immutable inputs to that
+historical qualification.
 
 ## Keyframe origin
 

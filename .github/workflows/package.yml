@@ -1,0 +1,43 @@
+name: Package
+
+on:
+  push:
+    branches:
+      - 'release/**'
+    tags:
+      - '**'
+  pull_request:
+    branches:
+      - 'release/**'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.4'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build and write source metadata
+        run: npm run build
+      - name: Require clean source metadata
+        run: node -e "const m = require('./source.json'); if (m.commit !== process.env.GITHUB_SHA || m.dirty) process.exit(1)"
+      - name: Pack and hash package
+        run: |
+          mkdir -p package-artifact
+          npm pack --pack-destination package-artifact
+          cd package-artifact
+          sha256sum *.tgz | tee SHA256SUMS
+          tar -tzf *.tgz | grep -Fx 'package/source.json'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: timeline-composition-${{ github.sha }}
+          path: package-artifact/

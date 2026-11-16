@@ -58,7 +58,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "source.json"
   ],
   "scripts": {
     "build": "npm run gen-registry:check && node scripts/build.mjs",
