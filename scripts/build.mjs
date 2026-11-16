@@ -3,7 +3,6 @@ import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {build} from 'esbuild';
 
-execFileSync(process.execPath, ['scripts/write-source-metadata.mjs'], {stdio: 'inherit'});
 execFileSync(process.execPath, ['scripts/build-typescript.mjs'], {stdio: 'inherit'});
 // NodeNext consumers need explicit ESM extensions in declarations as well.
 const fixDeclarations = directory => {

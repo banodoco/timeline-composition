@@ -58,8 +58,7 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist",
-    "source.json"
+    "dist"
   ],
   "scripts": {
     "build": "npm run gen-registry:check && node scripts/build.mjs",
@@ -68,7 +67,8 @@
     "gen-registry": "node --import tsx scripts/gen-registry.ts",
     "gen-registry:check": "node --import tsx scripts/gen-registry.ts --check",
     "test": "npm run build:test && node --import ./typescript/tests/register-extensionless.mjs --test typescript/test-dist/tests/*.test.js scripts/*.test.mjs",
-    "prepack": "npm run build",
+    "prepack": "node scripts/pack-metadata.mjs prepare",
+    "postpack": "node scripts/pack-metadata.mjs restore",
     "test:package": "node scripts/smoke-package.mjs"
   },
   "peerDependencies": {
