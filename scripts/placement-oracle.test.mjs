@@ -68,6 +68,10 @@ const publicResults = async (entry) => {
     ['track-scale-positioned-sibling-positioned', {fit: 'cover', scale: 1.4}, clip('sibling', {x: 0})],
   ];
   const layouts = Object.fromEntries(layoutCases.map(([name, track, item]) => [name, bounds({...baseTrack, ...track}, item)]));
+  const legacyLayouts = api.normalizeClipPlacement ? Object.fromEntries(layoutCases.map(([name, values, item]) => {
+    const normalized = api.normalizeClipPlacement({theme:'default', output:{resolution:'1280x720'}, tracks:[{...baseTrack,...values}], clips:[item]});
+    return [name, bounds(normalized.tracks[0], normalized.clips[0])];
+  })) : undefined;
   const renderedLayouts = Object.fromEntries(layoutCases.map(([name, trackValues, item]) => {
     const track = {...baseTrack, ...trackValues};
     const clips = name === 'track-scale-no-positioned-siblings'
@@ -96,7 +100,7 @@ const publicResults = async (entry) => {
     fadeOutStart: opacityCase({}, {effects: {fade_out: .2}}, 54),
     fadeOutEnd: opacityCase({}, {effects: {fade_out: .2}}, 59),
   };
-  return {layouts, renderedLayouts, appearances};
+  return {layouts, legacyLayouts, renderedLayouts, appearances};
 };
 
 test('placement oracle: built 0.0.17 source and integration preserve public appearance', async () => {
@@ -116,6 +120,15 @@ test('placement oracle: built 0.0.17 source and integration preserve public appe
       publicResults(baselineEntry), publicResults(integrationEntry),
     ]);
 
+    for (const name of Object.keys(baseline.layouts)) {
+      if (name === 'track-scale-positioned-sibling-positioned') {
+        // App scale migration rounds the inverse box to two decimal places.
+        assert.deepEqual(baseline.layouts[name], {status:'known',rect:{x:0,y:0,width:1280,height:720}});
+        assert.deepEqual(integration.legacyLayouts[name], {status:'known',rect:{x:0.004000000000075943,y:0.004000000000019099,width:1279.9959999999999,height:719.996}});
+      } else assert.deepEqual(integration.legacyLayouts[name], baseline.layouts[name], `normalized legacy geometry: ${name}`);
+    }
+
+    // DOM digests are change detectors, not appearance proof. Pixel proof is separate.
     // Approved changes: numeric media layout replaces object-fit; scale and
     // blend live on the track group. Exact DOM pins make each change reviewable.
     const expectedLayoutDom = {
