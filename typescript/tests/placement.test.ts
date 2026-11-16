@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveClipPlacement, normalizeClipPlacement, transformPlacementPoint} from '../src/lib/placement';
+import {resolveClipPlacement, normalizeClipPlacement, normalizeClipPlacementWithFindings, transformPlacementPoint} from '../src/lib/placement';
 import type {TimelineClip, TrackDefinition} from '../src/types';
 const clip: TimelineClip = {id:'c', track:'v', at:0};
 const track: TrackDefinition = {id:'v', kind:'visual', label:'V'};
@@ -28,4 +28,34 @@ test('normalizer bakes and stamps once, respects explicit fit and markers', () =
   assert.equal(once.clips[0].x,320); assert.deepEqual(normalizeClipPlacement(once),once);
   assert.throws(() => normalizeClipPlacement({...input,tracks:[{...track,app:{clipPlacementVersion:2}}]}),/v.*clipPlacementVersion/);
   assert.throws(() => resolve({...clip, fit:'invalid' as never}),/c.*fit/);
+});
+test('mixed fit, crop normalization, scale migration and invalid facts', () => {
+  const fit = resolve({...clip,fit:'contain'}, {...track,fit:'cover'});
+  const fill = resolve({...clip,id:'fill',fit:'cover'}, {...track,fit:'cover'});
+  assert.equal(fit.fit,'contain'); assert.equal(fill.fit,'cover');
+  const crop = resolve({...clip,cropLeft:.8,cropRight:.8});
+  assert.ok(Math.abs(crop.crop.cropLeft + crop.crop.cropRight - .99) < 1e-12);
+  for (const scale of [.5,2]) {
+    const input = {theme:'default',output:{resolution:'1280x720'},tracks:[{...track,scale}],clips:[{...clip,x:100}]};
+    const once = normalizeClipPlacement(input);
+    assert.notEqual(once.clips[0].x,100);
+    const marked = normalizeClipPlacement({...input,tracks:[{...track,scale,app:{scaleAppliesToPositionedClips:true,clipPlacementVersion:1}}]});
+    assert.equal(marked.clips[0].x,100);
+  }
+  assert.throws(() => resolve(clip,{...track,opacity:2}),/c.*track.opacity/);
+  assert.throws(() => resolveClipPlacement({clip,track,canvas,intrinsic:{width:0,height:800}}),/c.*asset.resolution/);
+  const p = resolve({...clip,x:-200,width:500},{...track,scale:.5});
+  assert.equal(p.local.clip.x,0);
+  const r = p.local.full;
+  const forward = {x:r.x*p.transform.forward.scale+p.transform.forward.tx,y:r.y*p.transform.forward.scale+p.transform.forward.ty,width:r.width*p.scale,height:r.height*p.scale};
+  const back = {x:forward.x*p.transform.inverse.scale+p.transform.inverse.tx,y:forward.y*p.transform.inverse.scale+p.transform.inverse.ty,width:forward.width*p.transform.inverse.scale,height:forward.height*p.transform.inverse.scale};
+  assert.deepEqual(back,r);
+});
+
+test('migration findings expose changes and vanish after normalization', () => {
+  const input = {theme:'default',output:{resolution:'1280x720'},tracks:[{...track,scale:2}],clips:[{...clip,x:0}]};
+  const result = normalizeClipPlacementWithFindings(input);
+  assert.deepEqual(result.findings.map(item => item.kind),['scale-bake','explicit-fit','markers']);
+  assert.equal(result.findings[2].markerCount,2);
+  assert.deepEqual(normalizeClipPlacementWithFindings(result.config).findings,[]);
 });

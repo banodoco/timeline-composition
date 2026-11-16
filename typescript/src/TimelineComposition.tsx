@@ -99,7 +99,7 @@ export const renderVisualClipContent = (
   }
 
   const assetEntry = getAssetEntry(clip, assets);
-  const modifierBounds: ModifierBounds = mediaModifierBounds(clip, track, assetEntry, modifiers.width, modifiers.height);
+  const modifierBounds: ModifierBounds = mediaModifierBounds(clip, track, assetEntry, modifiers.width, modifiers.height, 'local');
   const lookProps = {registries, clip, fps, globalFrame, modifierBounds, modifierRegistry: modifiers.registry,
     onModifierFinding: modifiers.onFinding};
   const baseVisual = (
