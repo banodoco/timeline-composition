@@ -143,7 +143,7 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig, optio
     const visualTrackIds = new Set((config.tracks ?? []).filter(track => track.kind === 'visual').map(track => track.id));
     const hasVisualMedia = config.clips.some(clip => visualTrackIds.has(clip.track) && !!clip.asset);
     const legacyCanvas = options?.legacyCanvas;
-    if (output?.resolution === undefined && hasVisualMedia && legacyCanvas !== undefined) {
+    if (output?.resolution === undefined && legacyCanvas !== undefined && (hasVisualMedia || legacyCanvas.source === 'legacy-render-resolved')) {
         const {width, height, fps, source} = legacyCanvas;
         if (!['app-resolved', 'legacy-render-resolved'].includes(source) || !Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0 || !Number.isFinite(fps) || fps <= 0) {
             throw new Error('Timeline property legacyCanvas must contain valid resolved width, height, fps and source');
