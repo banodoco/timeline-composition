@@ -311,7 +311,7 @@ export const TimelineComposition = (props: TimelineCompositionProps): ReactEleme
     if (resolution === undefined) {
       const visualTracks = new Set((normalized.tracks ?? []).filter(track => track.kind === 'visual').map(track => track.id));
       const clip = normalized.clips.find(item => visualTracks.has(item.track) && !!item.asset);
-      if (clip) throw new Error(`Clip '${clip.id}' requires timeline output.resolution; set the authored output in App project settings before rendering`);
+      if (clip) throw new Error(`Clip '${clip.id}' requires timeline output.resolution; open and save in the editor, or set the authored output in App project settings before rendering`);
     }
     if (resolution !== undefined && resolution.toLowerCase() !== `${width}x${height}`) {
       throw new Error(`Timeline property output.resolution '${resolution}' does not match render canvas ${width}x${height}`);

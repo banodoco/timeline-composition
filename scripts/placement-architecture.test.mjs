@@ -26,3 +26,32 @@ test('package renderers use the placement owner and only its input fields', () =
     else assert.match(source,/resolveTrackTransform\(/);
   }
 });
+
+// These are the complete drawing-adapter expressions, not merely resolver calls.
+const assertVisualAdapter = source => {
+  const tree = ts.createSourceFile('VisualClip.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  assert.doesNotMatch(source,/track\.fit|clip\.(?:x|y|width|height|cropTop|cropBottom|cropLeft|cropRight)\b/);
+  const expected = {outerStyle:{left:'viewport.x',top:'viewport.y',width:'viewport.width',height:'viewport.height'},
+    innerStyle:{left:'media.x - viewport.x',top:'media.y - viewport.y',width:'media.width',height:'media.height'}};
+  const found = {};
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && expected[node.name.text]) {
+      assert.ok(ts.isObjectLiteralExpression(node.initializer));
+      found[node.name.text] = Object.fromEntries(node.initializer.properties.filter(ts.isPropertyAssignment).map(p=>[p.name.getText(tree),p.initializer.getText(tree)]));
+    }
+    ts.forEachChild(node,visit);
+  };
+  visit(tree);
+  for (const [style,props] of Object.entries(expected)) for (const [key,value] of Object.entries(props)) assert.equal(found[style]?.[key],value,`${style}.${key}`);
+  assert.match(source,/<div style=\{outerStyle\}>/);
+  assert.match(source,/<Img src=\{fileUrl\} style=\{innerStyle\}/);
+  assert.match(source,/<Video[\s\S]*?style=\{innerStyle\}/);
+};
+test('drawing adapter consumes exact placement and rejects mutations', () => {
+  const source=readFileSync('typescript/src/VisualClip.tsx','utf8');
+  assertVisualAdapter(source);
+  const shifted=source.replace('left: media.x - viewport.x,','left: media.x - viewport.x + 10,');
+  assert.notEqual(shifted,source); assert.throws(()=>assertVisualAdapter(shifted));
+  const fit=source.replace('left: media.x - viewport.x,',"left: track.fit === 'cover' ? 0 : media.x - viewport.x,");
+  assert.notEqual(fit,source); assert.throws(()=>assertVisualAdapter(fit));
+});

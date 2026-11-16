@@ -102,5 +102,41 @@ test('authored complete legacy canvas materializes once without mutating input',
   for (const canvas of [{width:1280,height:720},{width:1280,height:-1,fps:24},{width:1280.5,height:720,fps:24}]) {
     assert.throws(()=>normalizeClipPlacement({...input,theme_overrides:{visual:{canvas}}}),/theme_overrides.visual.canvas/);
   }
-  assert.throws(()=>normalizeClipPlacement({...input,output:{fps:30}}),/output.fps/);
+  const explicitFps = normalizeClipPlacement({...input,output:{fps:30}});
+  assert.deepEqual(explicitFps.output,{fps:30,resolution:'1280x720',file:'output.mp4'});
+  assert.deepEqual(normalizeClipPlacement(explicitFps),explicitFps);
+  for (const fps of [0,-1,NaN]) assert.throws(()=>normalizeClipPlacement({...input,output:{fps}}),/output.fps/);
+});
+test('App-resolved legacy canvas is explicit, scoped and used once', () => {
+  const input = {theme:'default',tracks:[track],clips:[{...clip,asset:'a'}]};
+  const options = {legacyCanvas:{width:1280,height:720,fps:24,source:'app-resolved' as const}};
+  const result = normalizeClipPlacementWithFindings(input,options);
+  assert.deepEqual(result.config.output,{resolution:'1280x720',fps:24,file:'output.mp4'});
+  assert.deepEqual(result.findings.find(f=>f.kind==='canvas'),{kind:'canvas',source:'app-resolved',before:undefined,after:result.config.output});
+  assert.equal(input.clips[0].fit,undefined);
+  assert.deepEqual(normalizeClipPlacementWithFindings(result.config,options).findings,[]);
+  assert.equal(normalizeClipPlacementWithFindings({...input,clips:[]},options).config.output,undefined);
+  const override = {...input,theme_overrides:{visual:{canvas:{width:1920,height:1080,fps:30}}}};
+  assert.deepEqual(normalizeClipPlacement(override,options).output,{resolution:'1920x1080',fps:30,file:'output.mp4'});
+  const overriddenFps = {...override,output:{fps:24}};
+  assert.deepEqual(normalizeClipPlacement(overriddenFps,{legacyCanvas:{width:1920,height:1080,fps:24,source:'app-resolved'}}).output,{resolution:'1920x1080',fps:24,file:'output.mp4'});
+  assert.deepEqual(normalizeClipPlacement(overriddenFps).output,{resolution:'1920x1080',fps:24,file:'output.mp4'});
+  const partial = {...input,theme_overrides:{visual:{canvas:{width:1280}}}};
+  assert.deepEqual(normalizeClipPlacement(partial,options).output,result.config.output);
+  assert.throws(()=>normalizeClipPlacement({...partial,theme_overrides:{visual:{canvas:{width:999}}}},options),/theme_overrides.visual.canvas.*legacyCanvas/);
+  const declared = {...input,output:{resolution:'800x600'}};
+  assert.deepEqual(normalizeClipPlacement(declared,options).output,declared.output);
+  assert.throws(()=>normalizeClipPlacement(input,{legacyCanvas:{...options.legacyCanvas,width:0}}),/legacyCanvas/);
+  assert.throws(()=>normalizeClipPlacement({...input,output:{fps:30}},options),/output.fps/);
+});
+
+test('invalid scale marker is refused before migration without mutation', () => {
+  for (const marker of ['', 'true', 2, null]) {
+    const input = {theme:'default',output:{resolution:'1280x720'},tracks:[{...track,scale:2,app:{scaleAppliesToPositionedClips:marker}}],clips:[{...clip,x:0}]};
+    const before = JSON.stringify(input);
+    assert.throws(()=>normalizeClipPlacement(input),/v.*scaleAppliesToPositionedClips/);
+    assert.equal(JSON.stringify(input),before);
+  }
+  const valid = normalizeClipPlacement({theme:'default',output:{resolution:'1280x720'},tracks:[{...track,scale:2,app:{scaleAppliesToPositionedClips:false}}],clips:[{...clip,x:0}]});
+  assert.equal(valid.clips[0].x,320);
 });

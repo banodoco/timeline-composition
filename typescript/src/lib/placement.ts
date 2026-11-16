@@ -96,11 +96,20 @@ export type PlacementMigrationFinding = {
     after?: unknown;
     markerCount?: number;
 };
-export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {
+export type PlacementNormalizationOptions = {
+    legacyCanvas?: {width: number; height: number; fps: number; source: 'app-resolved'};
+};
+export const normalizeClipPlacementWithFindings = (config: TimelineConfig, options?: PlacementNormalizationOptions): {
     config: TimelineConfig;
     findings: PlacementMigrationFinding[];
 } => {
     const findings: PlacementMigrationFinding[] = [];
+    for (const track of config.tracks ?? []) {
+        const marker = track.app?.scaleAppliesToPositionedClips;
+        if (marker !== undefined && typeof marker !== 'boolean') {
+            throw new Error(`Track '${track.id}' property scaleAppliesToPositionedClips must be boolean`);
+        }
+    }
     let output = config.output as {resolution?: string; fps?: number; file?: string; [key: string]: unknown} | undefined;
     const overrides = config.theme_overrides as {visual?: {canvas?: unknown}} | undefined;
     const authoredCanvas = overrides?.visual?.canvas;
@@ -109,15 +118,42 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {
             throw new Error('Timeline property theme_overrides.visual.canvas must contain positive width, height and fps');
         }
         const source = authoredCanvas as {width?: unknown; height?: unknown; fps?: unknown};
-        if (!Number.isSafeInteger(source.width) || (source.width as number) <= 0 || !Number.isSafeInteger(source.height) || (source.height as number) <= 0 || typeof source.fps !== 'number' || !Number.isFinite(source.fps) || source.fps <= 0) {
-            throw new Error('Timeline property theme_overrides.visual.canvas must contain positive integer width and height and positive fps');
+        const validWidth = source.width === undefined || (Number.isSafeInteger(source.width) && (source.width as number) > 0);
+        const validHeight = source.height === undefined || (Number.isSafeInteger(source.height) && (source.height as number) > 0);
+        const validFps = source.fps === undefined || (typeof source.fps === 'number' && Number.isFinite(source.fps) && source.fps > 0);
+        if (!validWidth || !validHeight || !validFps) {
+            throw new Error('Timeline property theme_overrides.visual.canvas contains invalid width, height or fps');
         }
-        if (output?.fps !== undefined && output.fps !== source.fps) {
-            throw new Error('Timeline property output.fps disagrees with theme_overrides.visual.canvas.fps');
+        const complete = source.width !== undefined && source.height !== undefined && source.fps !== undefined;
+        if (complete) {
+            if (output?.fps !== undefined && (typeof output.fps !== 'number' || !Number.isFinite(output.fps) || output.fps <= 0)) {
+                throw new Error('Timeline property output.fps must be positive and finite');
+            }
+            const before = output;
+            output = {...output, resolution: `${source.width}x${source.height}`, fps: output?.fps ?? source.fps as number, file: output?.file ?? 'output.mp4'};
+            findings.push({kind:'canvas', source:'theme_overrides.visual.canvas', before, after:output});
+        } else {
+            const supplied = options?.legacyCanvas;
+            if (!supplied) throw new Error('Timeline property theme_overrides.visual.canvas is incomplete');
+            if ((source.width !== undefined && source.width !== supplied.width) || (source.height !== undefined && source.height !== supplied.height) || (source.fps !== undefined && output?.fps === undefined && source.fps !== supplied.fps)) {
+                throw new Error('Timeline property theme_overrides.visual.canvas disagrees with legacyCanvas');
+            }
+        }
+    }
+    const visualTrackIds = new Set((config.tracks ?? []).filter(track => track.kind === 'visual').map(track => track.id));
+    const hasVisualMedia = config.clips.some(clip => visualTrackIds.has(clip.track) && !!clip.asset);
+    const legacyCanvas = options?.legacyCanvas;
+    if (output?.resolution === undefined && hasVisualMedia && legacyCanvas !== undefined) {
+        const {width, height, fps, source} = legacyCanvas;
+        if (source !== 'app-resolved' || !Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0 || !Number.isFinite(fps) || fps <= 0) {
+            throw new Error('Timeline property legacyCanvas must contain valid app-resolved width, height and fps');
+        }
+        if (output?.fps !== undefined && output.fps !== fps) {
+            throw new Error('Timeline property output.fps disagrees with legacyCanvas.fps');
         }
         const before = output;
-        output = {...output, resolution: `${source.width}x${source.height}`, fps: output?.fps ?? source.fps, file: output?.file ?? 'output.mp4'};
-        findings.push({kind:'canvas', source:'theme_overrides.visual.canvas', before, after:output});
+        output = {...output, resolution: `${width}x${height}`, fps: output?.fps ?? fps, file: output?.file ?? 'output.mp4'};
+        findings.push({kind:'canvas', source, before, after:output});
     }
     const [w, h] = (output?.resolution ?? '').toLowerCase().split('x').map(Number);
     const hasCanvas = Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0 && /^\d+x\d+$/i.test(output?.resolution ?? '');
@@ -162,4 +198,4 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {
     if (!hasCanvas) findings.push({kind:'canvas-not-required', source:'no-canvas-dependent-scale-bake'});
     return { config: { ...config, ...(output !== config.output ? {output} : {}), tracks, clips }, findings };
 };
-export const normalizeClipPlacement = (config: TimelineConfig): TimelineConfig => normalizeClipPlacementWithFindings(config).config;
+export const normalizeClipPlacement = (config: TimelineConfig, options?: PlacementNormalizationOptions): TimelineConfig => normalizeClipPlacementWithFindings(config, options).config;
