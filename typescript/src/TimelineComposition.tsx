@@ -29,6 +29,7 @@ import {
 } from './evaluation';
 import {TransitionLayer} from './TransitionLayer';
 import {mediaModifierBounds} from './lib/modifier-bounds';
+import {normalizeClipPlacement, resolveTrackTransform} from './lib/placement';
 import type {ModifierRegistry, ModifierFinding, ModifierBounds} from './modifier-types';
 import {ModifierAdmissionError, hasModifierKeyframes} from './modifiers';
 import type {
@@ -50,19 +51,6 @@ type ModifierHostOptions = {
 
 const sortClipsByAt = (clips: TimelineClip[]): TimelineClip[] => {
   return [...clips].sort((left, right) => left.at - right.at);
-};
-
-const hasPositionOverride = (clip: TimelineClip): boolean => {
-  return (
-    clip.x !== undefined
-    || clip.y !== undefined
-    || clip.width !== undefined
-    || clip.height !== undefined
-    || clip.cropTop !== undefined
-    || clip.cropBottom !== undefined
-    || clip.cropLeft !== undefined
-    || clip.cropRight !== undefined
-  );
 };
 
 const getAssetEntry = (
@@ -119,26 +107,6 @@ export const renderVisualClipContent = (
       applyOpacity={(clip.modifiers?.length ?? 0) === 0} />
   );
 
-  if (hasPositionOverride(clip)) {
-    return <ClipLook {...lookProps} kind="media">{baseVisual}</ClipLook>;
-  }
-
-  if ((track.scale ?? 1) !== 1) {
-    return (
-      <ClipLook {...lookProps} kind="media">
-        <AbsoluteFill
-          style={{
-            transform: `scale(${track.scale})`,
-            transformOrigin: 'center center',
-            overflow: 'hidden',
-            isolation: 'isolate',
-          }}
-        >
-          {baseVisual}
-        </AbsoluteFill>
-      </ClipLook>
-    );
-  }
 
   return <ClipLook {...lookProps} kind="media">{baseVisual}</ClipLook>;
 };
@@ -253,6 +221,9 @@ export const prepareCompositionScene = (tracks: {track: TrackDefinition; clips: 
   width: number, height: number, registry?: ModifierRegistry, roles?: Readonly<Record<string, string>>,
   capabilities: SceneCapabilities = {}, rendererIdentity = '', fontDigests: Readonly<Record<string, string>> = {},
   registries: CompositionRegistries = {}, compiledTransitions?: CompiledCanonicalTransitions) => {
+  const normalized = normalizeClipPlacement({theme: '', output: {resolution: `${width}x${height}`},
+    tracks: tracks.map(input => input.track), clips: tracks.flatMap(input => input.clips)});
+  tracks = normalized.tracks!.map(track => ({track, clips: normalized.clips.filter(clip => clip.track === track.id)}));
   validateCompiledCanonicalTransitions(compiledTransitions, fps);
   if (compiledTransitions !== undefined) assertCanonicalTransitionsMatch(tracks, fps, theme, registries, compiledTransitions);
   const resolved = resolveElementRegistries(theme, registries);
@@ -295,11 +266,15 @@ const renderVisualTrack = (
   const rendered = evaluated.layers.map(layer => renderVisualSequence(track, clips[layer.clipIndex],
     assets, fps, theme, prepared.tracks[0].prepared.plans[layer.clipIndex], globalFrame, modifiers));
 
+  const transform = resolveTrackTransform(track, {width: modifiers.width, height: modifiers.height}).forward;
   return (
     <AbsoluteFill
       key={track.id}
       style={{
         opacity: track.opacity ?? 1,
+        transform: `scale(${transform.scale})`,
+        transformOrigin: 'center center',
+        overflow: 'hidden',
         mixBlendMode: track.blendMode && track.blendMode !== 'normal' ? track.blendMode : undefined,
       }}
     >
@@ -330,8 +305,9 @@ export const renderAudioTrack = (
 };
 
 export const TimelineComposition = (props: TimelineCompositionProps): ReactElement => {
-  const {timeline, assets} = props;
+  const {assets} = props;
   const {fps, width, height} = useVideoConfig();
+  const timeline = useMemo(() => normalizeClipPlacement({...props.timeline, output: {resolution: `${width}x${height}`}}), [props.timeline, width, height]);
   // Props are immutable snapshots. Validate once per compiled input / render
   // clock instead of repeating a whole-vector walk on every Remotion frame.
   useMemo(() => validateCompiledCanonicalTransitions(props.compiledTransitions, fps),

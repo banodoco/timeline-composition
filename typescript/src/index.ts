@@ -69,3 +69,5 @@ export {resolveElementRegistries, ElementRegistryProvider, useElementRegistries}
 export type {CompositionRegistries, ResolvedCompositionRegistries, AnimationRegistries, TransitionRegistries} from './registries';
 
 export type {CompiledCanonicalTransitions} from './evaluation';
+
+export * from './lib/placement';

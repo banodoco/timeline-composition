@@ -39,6 +39,7 @@ export type TimelineClip = {
   cropLeft?: number;
   cropRight?: number;
   cropTop?: number;
+  fit?: 'contain' | 'cover';
   effects?: unknown;
   entrance?: unknown;
   exit?: unknown;
@@ -63,6 +64,7 @@ export type TimelineClip = {
 };
 
 export type TrackDefinition = {
+  app?: Record<string, unknown>;
   blendMode?: 'darken' | 'hard-light' | 'lighten' | 'multiply' | 'normal' | 'overlay' | 'screen' | 'soft-light';
   fit?: 'contain' | 'cover' | 'manual';
   id: string;

@@ -1,6 +1,6 @@
 {
   "name": "@banodoco/timeline-composition",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "private": true,
   "description": "Portable timeline evaluator and Remotion composition with scoped element registries.",
   "type": "module",
