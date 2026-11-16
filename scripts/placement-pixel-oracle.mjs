@@ -1,6 +1,7 @@
 // Manual integration proof; uses installed Remotion toolchain, never package dependencies.
-// Run: node scripts/placement-pixel-oracle.mjs --toolchain /path/to/remotion --out /path/to/evidence
+// Run with --toolchain, --out, --old-tarball, --new-tarball and --browser.
 import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {mkdtempSync, mkdirSync, readdirSync, symlinkSync, writeFileSync, readFileSync} from 'node:fs';
 import {createServer} from 'node:http';
@@ -10,13 +11,12 @@ import {pathToFileURL} from 'node:url';
 
 const flag = name => {const i=process.argv.indexOf(name); if(i<0 || !process.argv[i+1]) throw new Error(`Missing ${name}`); return path.resolve(process.argv[i+1]);};
 const toolchain=flag('--toolchain'), output=flag('--out');
-const oldTar=process.env.C2_OLD_TARBALL ?? '/home/user/work/c2/astrid-agent/remotion/artifacts/banodoco-timeline-composition-0.0.17.tgz';
-const newTar=process.env.C2_NEW_TARBALL ?? '/home/user/work/c2/artifacts/banodoco-timeline-composition-0.0.19.tgz';
-const browser=process.env.C2_BROWSER ?? '/opt/pw-browsers/chromium';
+const oldTar=flag('--old-tarball'), newTar=flag('--new-tarball'), browser=flag('--browser');
 const req=createRequire(path.join(toolchain,'package.json'));
 const {bundle}=req('@remotion/bundler'), {selectComposition,renderStill}=req('@remotion/renderer');
 for (const pkg of ['@remotion/bundler','@remotion/renderer','remotion']) if(req(`${pkg}/package.json`).version !== '4.0.509') throw new Error(`${pkg} must be 4.0.509`);
 mkdirSync(output,{recursive:true});
+if(readdirSync(output).length) throw new Error('Output directory must be empty to prevent stale evidence');
 const root=mkdtempSync(path.join(tmpdir(),'c2-pixel-oracle-'));
 const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="800"><rect width="1920" height="800" fill="#eee"/><path d="M0 0h960v400H0z M960 400h960v400H960z" fill="#e32"/><path d="M960 0h960v400H960z M0 400h960v400H0z" fill="#26b"/><path d="M950 0h20v800h-20z M0 390h1920v20H0z" fill="#1d2"/><circle cx="960" cy="400" r="160" fill="#ff0" fill-opacity=".5"/></svg>`;
 const server=createServer((_req,res)=>{res.writeHead(200,{'Content-Type':'image/svg+xml','Access-Control-Allow-Origin':'*'});res.end(svg);});
@@ -56,6 +56,10 @@ try {
  // Exact pixels except RGB channel differences <= 2 (antialiasing tolerance).
  // Any larger delta is a finding, including scale-bake differences, until adjudicated.
  const py=`from PIL import Image\nimport json,sys,os\nroot=sys.argv[1]; names=json.loads(sys.argv[2]); result={}\nfor n in names:\n a=Image.open(os.path.join(root,n+'-old.png')).convert('RGBA'); b=Image.open(os.path.join(root,n+'-new.png')).convert('RGBA'); assert a.size==b.size\n p=list(a.getdata()); q=list(b.getdata()); diffs=[max(abs(x-y) for x,y in zip(u,v)) for u,v in zip(p,q)]; result[n]={'pixels':len(diffs),'over_2':sum(d>2 for d in diffs),'max_channel_delta':max(diffs)}\nprint(json.dumps(result,indent=2))\n`;
- const report=execFileSync('python3',['-c',py,output,JSON.stringify(cases.map(c=>c[0]))],{encoding:'utf8'});writeFileSync(path.join(output,'comparison.json'),report);process.stdout.write(report);
+ const report=execFileSync('python3',['-c',py,output,JSON.stringify(cases.map(c=>c[0]))],{encoding:'utf8'});writeFileSync(path.join(output,'comparison.json'),report);
+ const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
+ const images=Object.fromEntries(cases.flatMap(([name])=>['old','new'].map(side=>{const filename=`${name}-${side}.png`;return [filename,hash(path.join(output,filename))];})));
+ writeFileSync(path.join(output,'pixel-provenance.json'),JSON.stringify({tarballSha256:{old:hash(oldTar),candidate:hash(newTar)},images,comparisonSha256:hash(path.join(output,'comparison.json'))},null,2)+'\n');
+ process.stdout.write(report);
  if(Object.values(JSON.parse(report)).some(v=>v.over_2)) process.exitCode=1;
 } finally {server.close();}

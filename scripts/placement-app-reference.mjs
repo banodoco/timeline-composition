@@ -1,13 +1,26 @@
 // Historical App static-image preview reference; run after placement-pixel-oracle.
 // Source is extracted from immutable App commit, never from candidate placement code.
 import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {mkdtempSync,mkdirSync,readdirSync,symlinkSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readdirSync,symlinkSync,writeFileSync,readFileSync,existsSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 const flag=n=>{const i=process.argv.indexOf(n);if(i<0||!process.argv[i+1])throw Error(`Missing ${n}`);return path.resolve(process.argv[i+1]);};
-const app=flag('--app'), toolchain=flag('--toolchain'), out=flag('--out'), rev='0b6ef1615';
+const app=flag('--app'), toolchain=flag('--toolchain'), out=flag('--out'), oldTar=flag('--old-tarball'), newTar=flag('--new-tarball'), browserExecutable=flag('--browser');
+const rev='0b6ef16152dc3fa11246ccc2007da630c66d1a1a';
+const actualRevision=execFileSync('git',['rev-parse',rev],{cwd:app,encoding:'utf8'}).trim();
+if(actualRevision!==rev) throw Error(`Unexpected App source commit ${actualRevision}`);
+const sha256=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
+const archives={old:sha256(oldTar),candidate:sha256(newTar)};
+const allCases=['unpositioned-contain','unpositioned-cover','unpositioned-manual','explicit-neutral-x-zero','crop-only','crop-with-geometry','track-scale-alone','track-scale-no-positioned-siblings','track-scale-positioned-sibling-unpositioned','track-scale-positioned-sibling-positioned'];
+for(const name of allCases) for(const side of ['old','new']) if(!existsSync(path.join(out,`${name}-${side}.png`))) throw Error(`Missing ${name}-${side}.png; rerun pixel oracle in this output directory`);
+const comparisonPath=path.join(out,'comparison.json');
+if(!existsSync(comparisonPath)) throw Error('Missing comparison.json; rerun pixel oracle first');
+const proof=JSON.parse(readFileSync(path.join(out,'pixel-provenance.json'),'utf8'));
+if(proof.tarballSha256.old!==archives.old || proof.tarballSha256.candidate!==archives.candidate || proof.comparisonSha256!==sha256(comparisonPath)) throw Error('Pixel evidence provenance does not match artifacts or comparison');
+for(const name of allCases) for(const side of ['old','new']) { const filename=`${name}-${side}.png`; if(proof.images[filename]!==sha256(path.join(out,filename))) throw Error(`Pixel evidence hash mismatch: ${filename}`); }
 const req=createRequire(path.join(toolchain,'package.json')); const ts=req('typescript');
 const {bundle}=req('@remotion/bundler'),{selectComposition,renderStill}=req('@remotion/renderer');
 const show=file=>execFileSync('git',['show',`${rev}:${file}`],{cwd:app,encoding:'utf8'});
@@ -36,10 +49,15 @@ const src=`import React from 'react'; import {AbsoluteFill,Composition,registerR
 writeFileSync(path.join(root,'entry.tsx'),src);
 const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="800"><rect width="1920" height="800" fill="#eee"/><path d="M0 0h960v400H0z M960 400h960v400H960z" fill="#e32"/><path d="M960 0h960v400H960z M0 400h960v400H0z" fill="#26b"/><path d="M950 0h20v800h-20z M0 390h1920v20H0z" fill="#1d2"/><circle cx="960" cy="400" r="160" fill="#ff0" fill-opacity=".5"/></svg>`;
 const server=createServer((_q,r)=>{r.writeHead(200,{'Content-Type':'image/svg+xml','Access-Control-Allow-Origin':'*'});r.end(svg);});await new Promise(r=>server.listen(0,'127.0.0.1',r));
-try {const serveUrl=await bundle({entryPoint:path.join(root,'entry.tsx'),enableCaching:false});const clip=(id,more={})=>({id,track:'v1',asset:'grid',at:0,hold:2,...more});const cases=[['explicit-neutral-x-zero',1.6,[clip('x-zero',{x:0})]],['track-scale-positioned-sibling-unpositioned',1.4,[clip('ordinary'),clip('positioned-sibling',{x:0})]],['track-scale-positioned-sibling-positioned',1.4,[clip('sibling',{x:0}),clip('positioned-sibling',{x:0})]]];for(const [name,scale,clips] of cases){const inputProps={timeline:{theme:'default',output:{resolution:'1280x720'},tracks:[{id:'v1',kind:'visual',label:'V1',fit:'cover',scale}],clips},assets:{assets:{grid:{file:`http://127.0.0.1:${server.address().port}/grid.svg`,type:'image/svg+xml',resolution:'1920x800'}}}};const browserExecutable=process.env.C2_BROWSER??'/opt/pw-browsers/chromium';const composition=await selectComposition({serveUrl,id:'Oracle',inputProps,browserExecutable});await renderStill({serveUrl,composition,inputProps,frame:0,output:path.join(out,`${name}-app.png`),imageFormat:'png',browserExecutable});} } finally {server.close();}
+try {const serveUrl=await bundle({entryPoint:path.join(root,'entry.tsx'),enableCaching:false});const clip=(id,more={})=>({id,track:'v1',asset:'grid',at:0,hold:2,...more});const cases=[['explicit-neutral-x-zero',1.6,[clip('x-zero',{x:0})]],['track-scale-positioned-sibling-unpositioned',1.4,[clip('ordinary'),clip('positioned-sibling',{x:0})]],['track-scale-positioned-sibling-positioned',1.4,[clip('sibling',{x:0}),clip('positioned-sibling',{x:0})]]];for(const [name,scale,clips] of cases){const inputProps={timeline:{theme:'default',output:{resolution:'1280x720'},tracks:[{id:'v1',kind:'visual',label:'V1',fit:'cover',scale}],clips},assets:{assets:{grid:{file:`http://127.0.0.1:${server.address().port}/grid.svg`,type:'image/svg+xml',resolution:'1920x800'}}}};const composition=await selectComposition({serveUrl,id:'Oracle',inputProps,browserExecutable});await renderStill({serveUrl,composition,inputProps,frame:0,output:path.join(out,`${name}-app.png`),imageFormat:'png',browserExecutable});} } finally {server.close();}
 // Candidate must equal the App reference in each pixel within RGB(A) delta 2.
 const py=`from PIL import Image\nimport json,sys,os,hashlib\nroot=sys.argv[1]; names=json.loads(sys.argv[2]); result={}\nfor n in names:\n a=Image.open(os.path.join(root,n+'-app.png')).convert('RGBA'); b=Image.open(os.path.join(root,n+'-new.png')).convert('RGBA'); assert a.size==b.size\n ds=[max(abs(x-y) for x,y in zip(u,v)) for u,v in zip(a.getdata(),b.getdata())]; result[n]={'pixels':len(ds),'over_2':sum(d>2 for d in ds),'max_channel_delta':max(ds)}\nfor f in sorted(os.listdir(root)):\n if f.endswith('.png'):\n  result.setdefault('sha256',{})[f]=hashlib.sha256(open(os.path.join(root,f),'rb').read()).hexdigest()\nprint(json.dumps(result,indent=2))\n`;
 const names=['explicit-neutral-x-zero','track-scale-positioned-sibling-unpositioned','track-scale-positioned-sibling-positioned'];
-const report=execFileSync('python3',['-c',py,out,JSON.stringify(names)],{encoding:'utf8'});
-writeFileSync(path.join(out,'app-comparison.json'),report);process.stdout.write(report);
-if(names.some(name=>JSON.parse(report)[name].over_2)) process.exitCode=1;
+const metrics=JSON.parse(execFileSync('python3',['-c',py,out,JSON.stringify(names)],{encoding:'utf8'}));
+const oldComparison=JSON.parse(readFileSync(comparisonPath,'utf8'));
+const exactOldCases=allCases.filter(name=>!names.includes(name));
+const okOld=exactOldCases.every(name=>oldComparison[name]?.max_channel_delta===0);
+const okApp=names.every(name=>metrics[name].max_channel_delta===0);
+const result={provenance:{appCommit:rev,tarballSha256:archives},qualification:{oldExactCases:exactOldCases,appBitExactCases:names,passed:okOld&&okApp},oldVsCandidate:oldComparison,appVsCandidate:metrics};
+const report=JSON.stringify(result,null,2)+'\n';writeFileSync(path.join(out,'app-comparison.json'),report);process.stdout.write(report);
+if(!result.qualification.passed) process.exitCode=1;
