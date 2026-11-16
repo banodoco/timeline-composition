@@ -37,7 +37,7 @@ test('visual scene preparation is reused across frames and rebuilt for compositi
     },
   });
   const registries: CompositionRegistries = {effects: {counted: Counted}};
-  const initialTimeline: TimelineConfig = {theme: 'default', tracks: [track], clips: [baseClip]};
+  const initialTimeline: TimelineConfig = {theme: 'default', output: {resolution: '1920x1080'}, tracks: [track], clips: [baseClip]};
   let current: ReactTestRenderer;
   const render = (frame: number, options: {
     timeline?: TimelineConfig; assets?: AssetRegistry; theme?: ReturnType<typeof toRuntimeTheme>;
@@ -68,7 +68,7 @@ test('visual scene preparation is reused across frames and rebuilt for compositi
     ['registries', {registries: {...registries}}],
     ['modifier registry', {modifierRegistry: {}}],
     ['fps', {fps: 24}],
-    ['dimensions', {width: 1280, height: 720}],
+    ['dimensions', {width: 1280, height: 720, timeline: {...initialTimeline, output: {resolution: '1280x720'}}}],
     ['compiled transitions', {compiledTransitions: {fps: 30, tracks: [
       {trackId: track.id, clipIds: [baseClip.id], incomingTransitions: [null]},
     ]}}],

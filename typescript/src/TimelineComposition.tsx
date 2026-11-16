@@ -349,6 +349,20 @@ export const TimelineComposition = (props: TimelineCompositionProps): ReactEleme
 export const HypeComposition = TimelineComposition;
 export type {HypeCompositionProps, TimelineCompositionProps};
 
+
+// Adjacent tracks in the same shot share an isolated compositing stack.
+const partitionPreparedTracks = <T extends {track: TrackDefinition}>(tracks: T[]): {id?: string; tracks: T[]}[] => {
+  const groups: {id?: string; tracks: T[]}[] = [];
+  for (const item of tracks) {
+    const group = item.track.app?.group as {id?: unknown} | undefined;
+    const id = typeof group?.id === 'string' && group.id.length > 0 ? group.id : undefined;
+    const previous = groups[groups.length - 1];
+    if (id && previous?.id === id) previous.tracks.push(item);
+    else groups.push({id, tracks: [item]});
+  }
+  return groups;
+};
+
 const TimelineCompositionBody = ({
   timeline,
   assets,
@@ -388,8 +402,11 @@ const TimelineCompositionBody = ({
   return (
     <>
       <AbsoluteFill style={{position: 'relative', overflow: 'hidden'}}>
-        {preparedVisualTracks.map(({track, clips, prepared}) =>
-          renderVisualTrack(track, clips, assets, fps, theme, globalFrame, modifiers, prepared))}
+        {partitionPreparedTracks(preparedVisualTracks).map((group, index) => {
+          const children = group.tracks.map(({track, clips, prepared}) =>
+            renderVisualTrack(track, clips, assets, fps, theme, globalFrame, modifiers, prepared));
+          return group.id ? <AbsoluteFill key={`${group.id}:${index}`} data-shot-group={group.id} style={{isolation: 'isolate'}}>{children}</AbsoluteFill> : children;
+        })}
       </AbsoluteFill>
       {audioTracks.map((track) => {
         const clips = timeline.clips.filter((clip) => clip.track === track.id);

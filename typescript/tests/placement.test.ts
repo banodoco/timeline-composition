@@ -66,3 +66,11 @@ test('migration findings expose changes and vanish after normalization', () => {
 test('media normalization requires its authored output resolution', () => {
   assert.throws(() => normalizeClipPlacement({theme:'default',tracks:[track],clips:[{...clip,asset:'a'}]}),/output.resolution/);
 });
+test('audio markers and other metadata survive without changing clip geometry', () => {
+  const audio = {...track, id:'a',kind:'audio' as const,app:{other:'kept'}};
+  const audioClip = {...clip,id:'sound',track:'a',x:7};
+  const result = normalizeClipPlacement({theme:'default',tracks:[audio],clips:[audioClip]});
+  assert.deepEqual(result.clips[0],audioClip);
+  assert.deepEqual(result.tracks?.[0].app,{other:'kept',scaleAppliesToPositionedClips:true,clipPlacementVersion:1});
+  assert.throws(() => normalizeClipPlacement({theme:'default',tracks:[{...audio,app:{clipPlacementVersion:2}}],clips:[]}),/a.*clipPlacementVersion/);
+});

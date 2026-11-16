@@ -33,7 +33,7 @@ const render = (content: ReactElement, frame: number, fps = 30) => {
 
 const composition = (clips: TimelineClip[], registries: CompositionRegistries = {}, modifierRegistry?: ModifierRegistry,
   selectedTrack = track, selectedAssets = assets) => createElement(TimelineComposition, {
-  timeline: {theme: 'default', tracks: [selectedTrack], clips}, assets: selectedAssets, registries, modifierRegistry,
+  timeline: {theme: 'default', output: {resolution: '1920x1080'}, tracks: [selectedTrack], clips}, assets: selectedAssets, registries, modifierRegistry,
 });
 const prepare = (clips: TimelineClip[], registries: CompositionRegistries = {}, fps = 30) =>
   prepareCompositionScene([{track, clips}], assets, fps, theme, 1920, 1080, undefined, undefined, {}, '', {}, registries);
@@ -44,7 +44,11 @@ test('actual native render inputs use preroll source clock, unchanged trims/rate
   // clock, before handing it to the decoder. No decoder, browser or pixels claimed.
   const NativeProbe = ({content}: {content: ReactElement<ComponentProps<typeof VisualClip>>}) => {
     assert.equal(content.type, VisualClip);
-    const video = VisualClip(content.props) as ReactElement<{
+    const wrapper = VisualClip(content.props) as ReactElement<{style: {overflow: string}; children: ReactElement}>;
+    assert.equal(wrapper.type, 'div');
+    assert.equal(wrapper.props.style.overflow, 'hidden');
+    assert.ok(!Array.isArray(wrapper.props.children));
+    const video = wrapper.props.children as ReactElement<{
       trimBefore: number; trimAfter: number; playbackRate: number; volume: number; muted: boolean;
     }>;
     assert.equal(video.type, Video);
@@ -140,7 +144,7 @@ test('public scene capability and actual element clock share preroll plus speed 
 });
 
 test('public render keeps plain image cuts/crossfades and default dip, refusing unknown opt-in implementations', () => {
-  const images: AssetRegistry = {assets: {video: {file: 'https://example.test/image.jpg', type: 'image/jpeg'}}};
+  const images: AssetRegistry = {assets: {video: {file: 'https://example.test/image.jpg', type: 'image/jpeg', resolution: '1920x1080'}}};
   const clips = pair(false).map(clip => ({...clip, from: undefined, to: undefined, speed: undefined, hold: 1}));
   const cut = clips.map(clip => ({...clip, transition: undefined}));
   assert.equal((render(composition(cut, {}, undefined, track, images), 84).match(/<img /g) ?? []).length, 1);
@@ -199,7 +203,7 @@ const prepareIncoming = (clips: TimelineClip[], registries: CompositionRegistrie
   prepareCompositionScene([{track, clips}], assets, fps, theme, 1920, 1080, undefined, undefined, {}, '', {}, registries, compiled);
 const incomingComposition = (clips: TimelineClip[], registries: CompositionRegistries = {}, modifierRegistry?: ModifierRegistry,
   fps = 30, compiled = compileIncoming(clips, registries, fps)) =>
-  createElement(TimelineComposition, {timeline: {theme: 'default', tracks: [track], clips}, assets,
+  createElement(TimelineComposition, {timeline: {theme: 'default', output: {resolution: '1920x1080'}, tracks: [track], clips}, assets,
     registries, modifierRegistry, compiledTransitions: compiled});
 
 const incomingCases: {name: string; S: number; T: number; predecessor: boolean; R: number; H: number; middle: number; cap?: number}[] = [
@@ -341,7 +345,11 @@ test('explicit incoming rational fps shares speed-remapped registered clock and 
   const scene = prepareIncoming(elements, {effects: {clock: Clock}}, fps);
   const nativeSeen: {frame: number; trimBefore: number; trimAfter?: number; playbackRate: number; volume: number}[] = [];
   const Probe = ({content}: {content: ReactElement<ComponentProps<typeof VisualClip>>}) => {
-    const video = VisualClip(content.props) as ReactElement<{trimBefore: number; trimAfter?: number; playbackRate: number; volume: number}>;
+    const wrapper = VisualClip(content.props) as ReactElement<{style: {overflow: string}; children: ReactElement}>;
+    assert.equal(wrapper.type, 'div');
+    assert.equal(wrapper.props.style.overflow, 'hidden');
+    assert.ok(!Array.isArray(wrapper.props.children));
+    const video = wrapper.props.children as ReactElement<{trimBefore: number; trimAfter?: number; playbackRate: number; volume: number}>;
     assert.equal(video.type, Video);
     const {trimBefore, trimAfter, playbackRate, volume} = video.props;
     nativeSeen.push({frame: useCurrentFrame(), trimBefore, trimAfter, playbackRate, volume});
