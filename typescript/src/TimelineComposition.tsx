@@ -272,9 +272,7 @@ const renderVisualTrack = (
       key={track.id}
       style={{
         opacity: track.opacity ?? 1,
-        transform: `scale(${transform.scale})`,
-        transformOrigin: 'center center',
-        overflow: 'hidden',
+        ...(transform.scale !== 1 ? {transform: `scale(${transform.scale})`, transformOrigin: 'center center', overflow: 'hidden' as const} : {}),
         mixBlendMode: track.blendMode && track.blendMode !== 'normal' ? track.blendMode : undefined,
       }}
     >
@@ -307,7 +305,13 @@ export const renderAudioTrack = (
 export const TimelineComposition = (props: TimelineCompositionProps): ReactElement => {
   const {assets} = props;
   const {fps, width, height} = useVideoConfig();
-  const timeline = useMemo(() => normalizeClipPlacement({...props.timeline, output: {resolution: `${width}x${height}`}}), [props.timeline, width, height]);
+  const timeline = useMemo(() => {
+    const resolution = (props.timeline.output as {resolution?: string} | undefined)?.resolution;
+    if (resolution !== undefined && resolution.toLowerCase() !== `${width}x${height}`) {
+      throw new Error(`Timeline property output.resolution '${resolution}' does not match render canvas ${width}x${height}`);
+    }
+    return normalizeClipPlacement(props.timeline);
+  }, [props.timeline, width, height]);
   // Props are immutable snapshots. Validate once per compiled input / render
   // clock instead of repeating a whole-vector walk on every Remotion frame.
   useMemo(() => validateCompiledCanonicalTransitions(props.compiledTransitions, fps),

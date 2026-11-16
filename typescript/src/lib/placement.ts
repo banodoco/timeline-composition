@@ -21,6 +21,8 @@ export const resolveClipPlacement = ({clip, track, canvas, intrinsic}: Placement
   for (const key of ['x','y','width','height','cropTop','cropBottom','cropLeft','cropRight','opacity'] as const) {
     if (clip[key] !== undefined && !Number.isFinite(clip[key])) fail(key);
   }
+  if (clip.opacity !== undefined && (clip.opacity < 0 || clip.opacity > 1)) fail('opacity');
+  if (track.scale !== undefined && (!Number.isFinite(track.scale) || track.scale <= 0)) fail('track.scale');
   if (track.opacity !== undefined && (!Number.isFinite(track.opacity) || track.opacity < 0 || track.opacity > 1)) fail('track.opacity');
   if (![canvas.width,canvas.height].every(v => Number.isFinite(v) && v > 0)) fail('canvas');
   const full = {x: clip.x ?? 0, y: clip.y ?? 0, width: clip.width ?? canvas.width, height: clip.height ?? canvas.height};
@@ -53,14 +55,19 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig): {con
   const findings: PlacementMigrationFinding[] = [];
   const output = config.output as {resolution?: string} | undefined;
   const [w,h] = (output?.resolution ?? '').toLowerCase().split('x').map(Number);
-  const canvas = {width: Number.isFinite(w) && w > 0 ? w : 1920, height: Number.isFinite(h) && h > 0 ? h : 1080};
+  const hasCanvas = Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0 && /^\d+x\d+$/i.test(output?.resolution ?? '');
+  const visualIds = new Set((config.tracks ?? []).filter(track => track.kind === 'visual').map(track => track.id));
+  if (!hasCanvas && config.clips.some(clip => visualIds.has(clip.track) && !!clip.asset)) throw new Error('Timeline property output.resolution is required for visual media');
+  const canvas = {width: w, height: h};
   let clips = config.clips;
   const tracks = (config.tracks ?? []).map(track => {
     if (track.kind !== 'visual') return track;
     const version = track.app?.clipPlacementVersion;
     if (version !== undefined && version !== 1) throw new Error(`Track '${track.id}' property clipPlacementVersion is invalid`);
     const bake = track.app?.scaleAppliesToPositionedClips !== true;
-    const transform = resolveTrackTransform(track, canvas);
+    const needsBake = bake && (track.scale ?? 1) !== 1 && clips.some(clip => clip.track === track.id && geometry.some(k => clip[k] !== undefined));
+    if (needsBake && !hasCanvas) throw new Error(`Track '${track.id}' property output.resolution is required for scale migration`);
+    const transform = resolveTrackTransform(track, hasCanvas ? canvas : {width: 0, height: 0});
     clips = clips.map(clip => {
       if (clip.track !== track.id) return clip;
       const positioned = geometry.some(k => clip[k] !== undefined);

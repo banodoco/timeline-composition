@@ -43,6 +43,9 @@ test('mixed fit, crop normalization, scale migration and invalid facts', () => {
     assert.equal(marked.clips[0].x,100);
   }
   assert.throws(() => resolve(clip,{...track,opacity:2}),/c.*track.opacity/);
+  assert.throws(() => resolve({...clip,opacity:-.1}),/c.*opacity/);
+  assert.throws(() => resolve(clip,{...track,scale:0}),/c.*track.scale/);
+  for (const fit of ['contain','cover'] as const) for (const size of [{width:0,height:1},{width:NaN,height:NaN}]) assert.throws(() => resolveClipPlacement({clip:{...clip,fit},track,canvas,intrinsic:size}),/c.*asset.resolution/);
   assert.throws(() => resolveClipPlacement({clip,track,canvas,intrinsic:{width:0,height:800}}),/c.*asset.resolution/);
   const p = resolve({...clip,x:-200,width:500},{...track,scale:.5});
   assert.equal(p.local.clip.x,0);
@@ -58,4 +61,8 @@ test('migration findings expose changes and vanish after normalization', () => {
   assert.deepEqual(result.findings.map(item => item.kind),['scale-bake','explicit-fit','markers']);
   assert.equal(result.findings[2].markerCount,2);
   assert.deepEqual(normalizeClipPlacementWithFindings(result.config).findings,[]);
+});
+
+test('media normalization requires its authored output resolution', () => {
+  assert.throws(() => normalizeClipPlacement({theme:'default',tracks:[track],clips:[{...clip,asset:'a'}]}),/output.resolution/);
 });

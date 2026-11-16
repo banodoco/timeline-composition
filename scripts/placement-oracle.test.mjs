@@ -41,7 +41,7 @@ const publicResults = async (entry) => {
   const bounds = (track, item) => api.mediaModifierBounds(item, track, asset, width, height);
   const render = (track, clips, frame = 0) => {
     const composition = createElement(api.TimelineComposition, {
-      timeline: {theme: 'default', tracks: [track], clips}, assets,
+      timeline: {theme: 'default', output: {resolution: '1280x720'}, tracks: [track], clips}, assets,
     });
     const video = {id: 'placement', width, height, fps: 30, durationInFrames: 60,
       defaultProps: {}, folderName: null, parentFolderName: null, component: () => null,
@@ -119,30 +119,31 @@ test('placement oracle: built 0.0.17 source and integration preserve public appe
     // Approved changes: numeric media layout replaces object-fit; scale and
     // blend live on the track group. Exact DOM pins make each change reviewable.
     const expectedLayoutDom = {
-      "unpositioned-contain": "4d7f09285345fa4494f1d1e49af23be49b7e1b599b18bdd1eb783b8e46b35e92",
-      "unpositioned-cover": "df3a79ba7f119b8357ad0378249b367dd3420f74ca4250dea5da5409e63eb959",
-      "unpositioned-manual": "fb89f8bc934034d30df7cbbcc87636f787d509e1072646424f8162ec302606b3",
+      "unpositioned-contain": "c688726b92bb983429ee69ea38ce1b5199138df8de0d5a0481fc577c2234939a",
+      "unpositioned-cover": "7683ee6857a30872d6fa5d37912204ab3fc4567deeb5ebc5243b449e59811bdb",
+      "unpositioned-manual": "dbbbbb2d2288672f69a59941a867af485838603cd2aae9548dd0a6c5e80ee144",
       "explicit-neutral-x-zero": "12a2015792dcc1f5772744fa8c7644d9061ea6e767d1f6d7a692e58623c989d1",
-      "crop-only": "0c8f5d1a0b6f01655b79cb5f122449f64e3031c2330be6234fd2d412964a4f09",
-      "crop-with-geometry": "9fe969b129a98a134f2749166a69ecc771065215855e0a65476602ab1db60fdf",
+      "crop-only": "fe902cf2044d5cead7d1b4e69c8cb849593e299bb6c38d7aac1b5f8bbd79a032",
+      "crop-with-geometry": "ffc9a8d9004bcfea6865624819bf0369be44a63d6b8040a07579cb00b7c16eab",
       "track-scale-alone": "483bddcd117accb77613805f5e799eb3080ae9704eff5e1e8119b9400513c989",
       "track-scale-no-positioned-siblings": "335cd8800279fd0b790df771677125207cb722da350c719e12edda39f00e2fee",
       "track-scale-positioned-sibling-unpositioned": "667e973106a7de80090dc0709693b6f71166a1a5970f1be5224fb5d690041e00",
       "track-scale-positioned-sibling-positioned": "c93cdb45ef8b2c0f8b91c60abd1f0d1e6480c72fbd2c4454aaf947dbec4448b1"
 };
     const expectedAppearanceDom = {
-      "clipOpacity": "1833a6e6dcfcac1a9432e8bb8c293d968869893c2b2ab0983296956a4ff5523c",
-      "trackOpacity": "52070c0a4635065a896b221fdc9d31518d28bf53a02cf1a0e7b237e869f835de",
-      "clipAndTrackOpacity": "ce96313dbf53dce898974c86a16f91027eeb90be85db269be21caa176457724b",
-      "fadeInStart": "9ef20152a63e9258c0179387561ec6a2ff171a5b45a4faa4efb466136dad7ad4",
-      "fadeInMidpoint": "e982e41715cf2cd5f1495fe0f8df71c1b06db10a228e380aab58d14805ea7437",
-      "fadeOutStart": "49c3ef81803aec48e0c8d8b4ea836deb7b36a8b795fca94f77350f4ac5234d2d",
-      "fadeOutEnd": "22611cf82a63235d54fb8ac2022cc32db4264e12a5a054b6c169625cd32d5006"
+      "clipOpacity": "918327f256c98cd57fee6b18ce216cde7e66e4bef2cd0cf228f6b2c4502d380b",
+      "trackOpacity": "d6be0c5eab05b5bb4ca820c7a2156c5f2d241da20e288764d4a1eebb61e552de",
+      "clipAndTrackOpacity": "d01a345813bcf524783b892ae45adccb5b812159283d5fe6b156283b41b6c2fa",
+      "fadeInStart": "b17be625c7f53f3ab635a1713d3c58f65e880fbb0afed8cb4cb31bbdfe63e8f1",
+      "fadeInMidpoint": "a64876af6fb033a2aabf8589b173dda259b36f4b84b12345351a50c213dc89d9",
+      "fadeOutStart": "b9e7c3fdc991d22e186e66e55c53147181fd90051c1794fedfdab8e10b26ff0f",
+      "fadeOutEnd": "6f88fce2bef4036b25d3f781be9bd6bdf5d2afd26f20682572dc4166cd620f84"
 };
     const digest = text => createHash('sha256').update(text).digest('hex');
     for (const [name, expected] of Object.entries(expectedLayoutDom)) {
       assert.equal(digest(integration.renderedLayouts[name]), expected, `approved layout DOM: ${name}`);
-      assert.notEqual(integration.renderedLayouts[name], baseline.renderedLayouts[name], `layout changed: ${name}`);
+      if (['unpositioned-manual','crop-only','crop-with-geometry'].includes(name)) assert.equal(integration.renderedLayouts[name], baseline.renderedLayouts[name], `unchanged layout: ${name}`);
+      else assert.notEqual(integration.renderedLayouts[name], baseline.renderedLayouts[name], `layout changed: ${name}`);
     }
     for (const [name, expected] of Object.entries(expectedAppearanceDom)) {
       const {rendered, ...actual} = integration.appearances[name];

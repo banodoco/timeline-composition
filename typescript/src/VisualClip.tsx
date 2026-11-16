@@ -43,7 +43,11 @@ export const VisualClip: FC<VisualClipProps> = ({clip, track, assetEntry, fps, a
   const fadedOpacity = useFadeOpacity(clip, fps) * (clip.opacity ?? 1);
   const opacity = applyOpacity ? fadedOpacity : undefined;
   const isImage = assetEntry.type?.startsWith('image');
-  const placement = resolveClipPlacement({clip, track, canvas: {width: compositionWidth, height: compositionHeight}, intrinsic: intrinsicMediaSize(assetEntry)});
+  const intrinsic = intrinsicMediaSize(assetEntry);
+  if (![intrinsic.width, intrinsic.height].every(value => Number.isFinite(value) && value > 0)) {
+    throw new Error(`Clip '${clip.id}' asset '${clip.asset ?? '(unknown)'}' property resolution is missing or invalid; record the media resolution before rendering`);
+  }
+  const placement = resolveClipPlacement({clip, track, canvas: {width: compositionWidth, height: compositionHeight}, intrinsic});
   const {clip: viewport, media} = placement.local;
   if (viewport.width <= 0 || viewport.height <= 0) return null;
 
@@ -64,6 +68,7 @@ export const VisualClip: FC<VisualClipProps> = ({clip, track, assetEntry, fps, a
     height: media.height,
     maxWidth: 'none',
     maxHeight: 'none',
+    mixBlendMode: track.blendMode && track.blendMode !== 'normal' ? track.blendMode : undefined,
   };
 
   if (isImage) {
