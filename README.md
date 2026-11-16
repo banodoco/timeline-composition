@@ -6,9 +6,9 @@ Remotion composition, theme API and default registries. Plain Node can import
 loader. The renderer uses host peers React/React DOM 18.3.1 and
 Remotion/media/layout-utils 4.0.509; those runtimes are never bundled.
 
-Every build writes a root `source.json` containing the repository URL, full
-source commit SHA and whether the checkout had tracked or untracked changes.
-The file contains no build time, so the metadata is stable for a given checkout.
+Packing from a clean checkout stamps the full source commit SHA in the packed
+`package.json` as `gitHead`, and supplies the repository URL there when absent.
+The stamp exists only during packing, so it does not dirty the source tree.
 Release CI requires a clean checkout and checks the SHA against `GITHUB_SHA`.
 
 The package owns text-card (including the `text` alias), six animations, two
@@ -401,9 +401,9 @@ implied by this package.
 
 ## Build, package and verify
 
-Release CI builds and tests the source, packs the artifact, writes a SHA-256
-checksum, and verifies that the archive contains `package/source.json`. The
-metadata records its source commit and dirty state. The 0.0.14 and 0.0.13
+Release CI builds and tests the source, packs the artifact, runs the package
+smoke test against that tarball, and writes a SHA-256 checksum. The packed
+`package.json` records its source commit in `gitHead`. The 0.0.14 and 0.0.13
 archives below remain historical qualification evidence, not current setup
 instructions.
 
