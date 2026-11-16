@@ -123,8 +123,10 @@ test('placement oracle: built 0.0.17 source and integration preserve public appe
     assert.match(baseline.renderedLayouts['unpositioned-contain'], /<img/);
     assert.match(baseline.renderedLayouts['unpositioned-contain'], /object-fit:contain/);
     assert.match(baseline.renderedLayouts['unpositioned-cover'], /object-fit:cover/);
+    assert.notEqual(baseline.renderedLayouts['unpositioned-contain'], baseline.renderedLayouts['unpositioned-cover']);
     assert.equal((baseline.renderedLayouts['track-scale-no-positioned-siblings'].match(/transform:scale\(1\.4\)/g) ?? []).length, 2);
     assert.equal((baseline.renderedLayouts['track-scale-positioned-sibling-unpositioned'].match(/transform:scale\(1\.4\)/g) ?? []).length, 1);
+    assert.equal((baseline.renderedLayouts['track-scale-positioned-sibling-positioned'].match(/transform:scale\(1\.4\)/g) ?? []).length, 0);
     console.log(`Placement oracle matched ${Object.keys(baseline.layouts).length} geometry cases, ${Object.keys(baseline.renderedLayouts).length} rendered layouts, and ${Object.keys(baseline.appearances).length} appearance cases (source ${SOURCE_COMMIT} vs worktree at ${integrationCommit}).`);
   } finally {
     rmSync(temporaryRoot, {recursive: true, force: true});
