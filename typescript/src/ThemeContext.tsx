@@ -1,7 +1,7 @@
 // Sprint 5: physically moved here from tools/remotion/src/ThemeContext.tsx.
 // The theme-api re-export now points at this in-package module.
 
-import {createContext, useContext} from 'react';
+import {createContext, useContext, useMemo} from 'react';
 import type {ReactNode} from 'react';
 
 export type Theme = {
@@ -101,7 +101,8 @@ export const ThemeProvider = ({
   children: ReactNode;
   value?: Theme;
 }): ReactNode => {
-  return <ThemeContext.Provider value={value === undefined ? DEFAULT_RUNTIME_THEME : toRuntimeTheme(value)}>{children}</ThemeContext.Provider>;
+  const runtimeTheme = useMemo(() => value === undefined ? DEFAULT_RUNTIME_THEME : toRuntimeTheme(value), [value]);
+  return <ThemeContext.Provider value={runtimeTheme}>{children}</ThemeContext.Provider>;
 };
 
 export const useTheme = (): RuntimeTheme => {

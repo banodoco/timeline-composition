@@ -1,2 +1,3 @@
+- 0.0.15 — Reuse prepared visual scene plans across frames and use sanitized playback rates for timeline duration.
 - 0.0.14 — Evaluate known clip-look scene geometry, including renderer-aligned off-center crop and entrance transforms.
 - 0.0.13 — Expose the existing encoded envelope source admission helper through the public evaluation entry point.

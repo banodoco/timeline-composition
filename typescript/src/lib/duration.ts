@@ -13,7 +13,7 @@ export const getClipSourceDuration = (clip: TimelineClip): number => {
 };
 
 export const getClipTimelineDuration = (clip: TimelineClip): number => {
-  const speed = clip.speed ?? 1;
+  const speed = getSanitizedPlaybackRate(clip.speed);
   return getClipSourceDuration(clip) / speed;
 };
 
