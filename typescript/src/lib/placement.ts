@@ -97,7 +97,7 @@ export type PlacementMigrationFinding = {
     markerCount?: number;
 };
 export type PlacementNormalizationOptions = {
-    legacyCanvas?: {width: number; height: number; fps: number; source: 'app-resolved'};
+    legacyCanvas?: {width: number; height: number; fps: number; source: 'app-resolved' | 'legacy-render-resolved'};
 };
 export const normalizeClipPlacementWithFindings = (config: TimelineConfig, options?: PlacementNormalizationOptions): {
     config: TimelineConfig;
@@ -145,8 +145,8 @@ export const normalizeClipPlacementWithFindings = (config: TimelineConfig, optio
     const legacyCanvas = options?.legacyCanvas;
     if (output?.resolution === undefined && hasVisualMedia && legacyCanvas !== undefined) {
         const {width, height, fps, source} = legacyCanvas;
-        if (source !== 'app-resolved' || !Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0 || !Number.isFinite(fps) || fps <= 0) {
-            throw new Error('Timeline property legacyCanvas must contain valid app-resolved width, height and fps');
+        if (!['app-resolved', 'legacy-render-resolved'].includes(source) || !Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0 || !Number.isFinite(fps) || fps <= 0) {
+            throw new Error('Timeline property legacyCanvas must contain valid resolved width, height, fps and source');
         }
         if (output?.fps !== undefined && output.fps !== fps) {
             throw new Error('Timeline property output.fps disagrees with legacyCanvas.fps');

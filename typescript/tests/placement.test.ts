@@ -111,6 +111,11 @@ test('App-resolved legacy canvas is explicit, scoped and used once', () => {
   const input = {theme:'default',tracks:[track],clips:[{...clip,asset:'a'}]};
   const options = {legacyCanvas:{width:1280,height:720,fps:24,source:'app-resolved' as const}};
   const result = normalizeClipPlacementWithFindings(input,options);
+  const renderOptions = {legacyCanvas:{width:1280,height:720,fps:24,source:'legacy-render-resolved' as const}};
+  const renderResult = normalizeClipPlacementWithFindings(input,renderOptions);
+  assert.deepEqual(renderResult.config.output,{resolution:'1280x720',fps:24,file:'output.mp4'});
+  assert.equal(renderResult.findings.find(f=>f.kind==='canvas')?.source,'legacy-render-resolved');
+  assert.throws(()=>normalizeClipPlacement(input,{legacyCanvas:{...options.legacyCanvas,source:'unknown' as never}}),/legacyCanvas/);
   assert.deepEqual(result.config.output,{resolution:'1280x720',fps:24,file:'output.mp4'});
   assert.deepEqual(result.findings.find(f=>f.kind==='canvas'),{kind:'canvas',source:'app-resolved',before:undefined,after:result.config.output});
   assert.equal(input.clips[0].fit,undefined);
