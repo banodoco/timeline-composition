@@ -1,0 +1,201 @@
+import type { TimelineClip, TrackDefinition, TimelineConfig, AssetRegistryEntry } from '../types';
+import { computeRenderBounds, getIntrinsicMediaSize, getVisibleBoundsFromCrop, normalizeRenderCropValues, type RenderBounds } from './render-bounds';
+export type PlacementClip = Pick<TimelineClip, 'id' | 'x' | 'y' | 'width' | 'height' | 'cropTop' | 'cropBottom' | 'cropLeft' | 'cropRight' | 'fit' | 'opacity'>;
+export type PlacementTrack = Pick<TrackDefinition, 'id' | 'fit' | 'scale' | 'opacity'>;
+export type PlacementInput = {
+    clip: PlacementClip;
+    track: PlacementTrack;
+    canvas: {
+        width: number;
+        height: number;
+    };
+    intrinsic: {
+        width: number;
+        height: number;
+    };
+};
+export type PlacementTransform = {
+    scale: number;
+    tx: number;
+    ty: number;
+};
+export const transformPlacementPoint = (p: {
+    x: number;
+    y: number;
+}, t: PlacementTransform) => ({ x: p.x * t.scale + t.tx, y: p.y * t.scale + t.ty });
+export const transformPlacementRect = (r: RenderBounds, t: PlacementTransform): RenderBounds => ({ ...transformPlacementPoint(r, t), width: r.width * t.scale, height: r.height * t.scale });
+export const resolveTrackTransform = (track: PlacementTrack, canvas: {
+    width: number;
+    height: number;
+}) => {
+    const scale = track.scale ?? 1;
+    if (!Number.isFinite(scale) || scale <= 0)
+        throw new Error(`Track '${track.id}' property scale must be positive`);
+    const forward = { scale, tx: canvas.width * (1 - scale) / 2, ty: canvas.height * (1 - scale) / 2 };
+    return { forward, inverse: { scale: 1 / scale, tx: -forward.tx / scale, ty: -forward.ty / scale } };
+};
+export const intrinsicMediaSize = (asset?: AssetRegistryEntry) => {
+    const size = getIntrinsicMediaSize(asset?.resolution);
+    return { width: size.width ?? NaN, height: size.height ?? NaN };
+};
+export const resolveClipPlacement = ({ clip, track, canvas, intrinsic }: PlacementInput) => {
+    const fail = (property: string) => {
+        throw new Error(`Clip '${clip.id}' property ${property} is invalid`);
+    };
+    if (clip.fit !== undefined && clip.fit !== 'contain' && clip.fit !== 'cover')
+        fail('fit');
+    if (track.fit !== undefined && !['contain', 'cover', 'manual'].includes(track.fit))
+        fail('track.fit');
+    for (const key of ['x', 'y', 'width', 'height', 'cropTop', 'cropBottom', 'cropLeft', 'cropRight', 'opacity'] as const) {
+        if (clip[key] !== undefined && !Number.isFinite(clip[key]))
+            fail(key);
+    }
+    if (clip.opacity !== undefined && (clip.opacity < 0 || clip.opacity > 1))
+        fail('opacity');
+    if (track.scale !== undefined && (!Number.isFinite(track.scale) || track.scale <= 0))
+        fail('track.scale');
+    if (track.opacity !== undefined && (!Number.isFinite(track.opacity) || track.opacity < 0 || track.opacity > 1))
+        fail('track.opacity');
+    if (![canvas.width, canvas.height].every(v => Number.isFinite(v) && v > 0))
+        fail('canvas');
+    const full = { x: clip.x ?? 0, y: clip.y ?? 0, width: clip.width ?? canvas.width, height: clip.height ?? canvas.height };
+    if (full.width <= 0)
+        fail('width');
+    if (full.height <= 0)
+        fail('height');
+    const fit = clip.fit ?? (track.fit === 'manual' ? 'cover' : track.fit) ?? 'contain';
+    const crop = normalizeRenderCropValues(clip);
+    const visible = getVisibleBoundsFromCrop(full, crop);
+    const clipped = computeRenderBounds(visible, canvas.width, canvas.height);
+    if (!intrinsic || !Number.isFinite(intrinsic.width) || intrinsic.width <= 0 || !Number.isFinite(intrinsic.height) || intrinsic.height <= 0)
+        fail('asset.resolution / intrinsic');
+    const iw = intrinsic.width, ih = intrinsic.height;
+    const factor = (fit === 'cover' ? Math.max : Math.min)(full.width / iw, full.height / ih);
+    const media = { x: full.x + (full.width - iw * factor) / 2, y: full.y + (full.height - ih * factor) / 2, width: iw * factor, height: ih * factor };
+    const intersect = (a: RenderBounds, b: RenderBounds): RenderBounds => {
+        const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
+        return { x, y, width: Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x), height: Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y) };
+    };
+    const content = intersect(clipped, media);
+    const transform = resolveTrackTransform(track, canvas);
+    const output = { full: transformPlacementRect(full, transform.forward), visible: transformPlacementRect(visible, transform.forward), clip: transformPlacementRect(clipped, transform.forward), media: transformPlacementRect(media, transform.forward) };
+    const provenance = { fit: clip.fit !== undefined ? 'clip' : track.fit !== undefined ? 'track' : 'default',
+        ...Object.fromEntries((['x', 'y', 'width', 'height', 'cropTop', 'cropBottom', 'cropLeft', 'cropRight'] as const).map(k => [k, clip[k] !== undefined ? 'clip' : 'default'])),
+        scale: track.scale !== undefined ? 'track' : 'default', clipOpacity: clip.opacity !== undefined ? 'clip' : 'default', trackOpacity: track.opacity !== undefined ? 'track' : 'default',
+        intrinsicWidth: iw === intrinsic.width ? 'media' : 'default', intrinsicHeight: ih === intrinsic.height ? 'media' : 'default' };
+    const finalClip = computeRenderBounds(output.clip, canvas.width, canvas.height);
+    return { fit, crop, local: { full, visible, clip: clipped, media, content }, output: { ...output, finalClip, content: intersect(finalClip, output.media) }, transform, scale: transform.forward.scale, opacity: { clip: clip.opacity ?? 1, track: track.opacity ?? 1, product: (clip.opacity ?? 1) * (track.opacity ?? 1) }, provenance };
+};
+const geometry = ['x', 'y', 'width', 'height', 'cropTop', 'cropBottom', 'cropLeft', 'cropRight'] as const;
+export type PlacementMigrationFinding = {
+    trackId?: string;
+    clipId?: string;
+    kind: 'scale-bake' | 'explicit-fit' | 'markers' | 'canvas' | 'canvas-not-required';
+    source?: string;
+    before?: unknown;
+    after?: unknown;
+    markerCount?: number;
+};
+export type PlacementNormalizationOptions = {
+    legacyCanvas?: {width: number; height: number; fps: number; source: 'app-resolved' | 'legacy-render-resolved'};
+};
+export const normalizeClipPlacementWithFindings = (config: TimelineConfig, options?: PlacementNormalizationOptions): {
+    config: TimelineConfig;
+    findings: PlacementMigrationFinding[];
+} => {
+    const findings: PlacementMigrationFinding[] = [];
+    for (const track of config.tracks ?? []) {
+        const marker = track.app?.scaleAppliesToPositionedClips;
+        if (marker !== undefined && typeof marker !== 'boolean') {
+            throw new Error(`Track '${track.id}' property scaleAppliesToPositionedClips must be boolean`);
+        }
+    }
+    let output = config.output as {resolution?: string; fps?: number; file?: string; [key: string]: unknown} | undefined;
+    const overrides = config.theme_overrides as {visual?: {canvas?: unknown}} | undefined;
+    const authoredCanvas = overrides?.visual?.canvas;
+    if (output?.resolution === undefined && authoredCanvas !== undefined) {
+        if (!authoredCanvas || typeof authoredCanvas !== 'object' || Array.isArray(authoredCanvas)) {
+            throw new Error('Timeline property theme_overrides.visual.canvas must contain positive width, height and fps');
+        }
+        const source = authoredCanvas as {width?: unknown; height?: unknown; fps?: unknown};
+        const validWidth = source.width === undefined || (Number.isSafeInteger(source.width) && (source.width as number) > 0);
+        const validHeight = source.height === undefined || (Number.isSafeInteger(source.height) && (source.height as number) > 0);
+        const validFps = source.fps === undefined || (typeof source.fps === 'number' && Number.isFinite(source.fps) && source.fps > 0);
+        if (!validWidth || !validHeight || !validFps) {
+            throw new Error('Timeline property theme_overrides.visual.canvas contains invalid width, height or fps');
+        }
+        const complete = source.width !== undefined && source.height !== undefined && source.fps !== undefined;
+        if (complete) {
+            if (output?.fps !== undefined && (typeof output.fps !== 'number' || !Number.isFinite(output.fps) || output.fps <= 0)) {
+                throw new Error('Timeline property output.fps must be positive and finite');
+            }
+            const before = output;
+            output = {...output, resolution: `${source.width}x${source.height}`, fps: output?.fps ?? source.fps as number, file: output?.file ?? 'output.mp4'};
+            findings.push({kind:'canvas', source:'theme_overrides.visual.canvas', before, after:output});
+        } else {
+            const supplied = options?.legacyCanvas;
+            if (!supplied) throw new Error('Timeline property theme_overrides.visual.canvas is incomplete');
+            if ((source.width !== undefined && source.width !== supplied.width) || (source.height !== undefined && source.height !== supplied.height) || (source.fps !== undefined && output?.fps === undefined && source.fps !== supplied.fps)) {
+                throw new Error('Timeline property theme_overrides.visual.canvas disagrees with legacyCanvas');
+            }
+        }
+    }
+    const visualTrackIds = new Set((config.tracks ?? []).filter(track => track.kind === 'visual').map(track => track.id));
+    const hasVisualMedia = config.clips.some(clip => visualTrackIds.has(clip.track) && !!clip.asset);
+    const legacyCanvas = options?.legacyCanvas;
+    if (output?.resolution === undefined && legacyCanvas !== undefined && (hasVisualMedia || legacyCanvas.source === 'legacy-render-resolved')) {
+        const {width, height, fps, source} = legacyCanvas;
+        if (!['app-resolved', 'legacy-render-resolved'].includes(source) || !Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0 || !Number.isFinite(fps) || fps <= 0) {
+            throw new Error('Timeline property legacyCanvas must contain valid resolved width, height, fps and source');
+        }
+        if (output?.fps !== undefined && output.fps !== fps) {
+            throw new Error('Timeline property output.fps disagrees with legacyCanvas.fps');
+        }
+        const before = output;
+        output = {...output, resolution: `${width}x${height}`, fps: output?.fps ?? fps, file: output?.file ?? 'output.mp4'};
+        findings.push({kind:'canvas', source, before, after:output});
+    }
+    const [w, h] = (output?.resolution ?? '').toLowerCase().split('x').map(Number);
+    const hasCanvas = Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0 && /^\d+x\d+$/i.test(output?.resolution ?? '');
+    if (output?.resolution !== undefined && !hasCanvas)
+        throw new Error('Timeline property output.resolution is invalid');
+    const canvas = { width: w, height: h };
+    let clips = config.clips;
+    const tracks = (config.tracks ?? []).map(track => {
+        const version = track.app?.clipPlacementVersion;
+        if (version !== undefined && version !== 1)
+            throw new Error(`Track '${track.id}' property clipPlacementVersion is invalid`);
+        const bake = track.app?.scaleAppliesToPositionedClips !== true;
+        const needsBake = track.kind === 'visual' && bake && (track.scale ?? 1) !== 1 && clips.some(clip => clip.track === track.id && geometry.some(k => clip[k] !== undefined));
+        if (needsBake && !hasCanvas)
+            throw new Error(`Track '${track.id}' property output.resolution is required for scale migration`);
+        if (track.scale !== undefined && (!Number.isFinite(track.scale) || track.scale <= 0))
+            throw new Error(`Track '${track.id}' property scale must be positive`);
+        const transform = needsBake ? resolveTrackTransform(track, canvas) : undefined;
+        clips = clips.map(clip => {
+            if (track.kind !== 'visual' || clip.track !== track.id)
+                return clip;
+            const positioned = geometry.some(k => clip[k] !== undefined);
+            let result = clip;
+            if (needsBake && positioned && transform) {
+                const full = { x: clip.x ?? 0, y: clip.y ?? 0, width: clip.width ?? canvas.width, height: clip.height ?? canvas.height };
+                const rect = transformPlacementRect(full, transform.inverse);
+                const round = (v: number) => Math.round(v * 100) / 100;
+                result = { ...result, x: round(rect.x), y: round(rect.y), width: round(rect.width), height: round(rect.height) };
+                findings.push({ trackId: track.id, clipId: clip.id, kind: 'scale-bake', before: full, after: { x: result.x, y: result.y, width: result.width, height: result.height } });
+            }
+            if (version === undefined && positioned && clip.fit === undefined && (!clip.clipType || ['media', 'image', 'video', 'hold'].includes(clip.clipType))) {
+                result = { ...result, fit: 'cover' };
+                findings.push({ trackId: track.id, clipId: clip.id, kind: 'explicit-fit', after: 'cover' });
+            }
+            return result;
+        });
+        const markerCount = Number(bake) + Number(version === undefined);
+        if (markerCount)
+            findings.push({ trackId: track.id, kind: 'markers', markerCount });
+        return { ...track, app: { ...track.app, scaleAppliesToPositionedClips: true, clipPlacementVersion: 1 } };
+    });
+    if (!hasCanvas) findings.push({kind:'canvas-not-required', source:'no-canvas-dependent-scale-bake'});
+    return { config: { ...config, ...(output !== config.output ? {output} : {}), tracks, clips }, findings };
+};
+export const normalizeClipPlacement = (config: TimelineConfig, options?: PlacementNormalizationOptions): TimelineConfig => normalizeClipPlacementWithFindings(config, options).config;

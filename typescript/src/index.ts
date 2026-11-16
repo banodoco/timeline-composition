@@ -69,3 +69,8 @@ export {resolveElementRegistries, ElementRegistryProvider, useElementRegistries}
 export type {CompositionRegistries, ResolvedCompositionRegistries, AnimationRegistries, TransitionRegistries} from './registries';
 
 export type {CompiledCanonicalTransitions} from './evaluation';
+
+export * from './lib/placement';
+
+export {computeRenderBounds, getVisibleBoundsFromCrop, normalizeRenderCropValues, hasRenderableBounds, computeViewportMediaLayout} from './lib/render-bounds';
+export type {RenderBounds, RenderCropValues, ViewportMediaLayout} from './lib/render-bounds';

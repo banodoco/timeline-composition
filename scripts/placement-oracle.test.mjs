@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
@@ -40,7 +41,7 @@ const publicResults = async (entry) => {
   const bounds = (track, item) => api.mediaModifierBounds(item, track, asset, width, height);
   const render = (track, clips, frame = 0) => {
     const composition = createElement(api.TimelineComposition, {
-      timeline: {theme: 'default', tracks: [track], clips}, assets,
+      timeline: {theme: 'default', output: {resolution: '1280x720'}, tracks: [track], clips}, assets,
     });
     const video = {id: 'placement', width, height, fps: 30, durationInFrames: 60,
       defaultProps: {}, folderName: null, parentFolderName: null, component: () => null,
@@ -67,6 +68,10 @@ const publicResults = async (entry) => {
     ['track-scale-positioned-sibling-positioned', {fit: 'cover', scale: 1.4}, clip('sibling', {x: 0})],
   ];
   const layouts = Object.fromEntries(layoutCases.map(([name, track, item]) => [name, bounds({...baseTrack, ...track}, item)]));
+  const legacyLayouts = api.normalizeClipPlacement ? Object.fromEntries(layoutCases.map(([name, values, item]) => {
+    const normalized = api.normalizeClipPlacement({theme:'default', output:{resolution:'1280x720'}, tracks:[{...baseTrack,...values}], clips:[item]});
+    return [name, bounds(normalized.tracks[0], normalized.clips[0])];
+  })) : undefined;
   const renderedLayouts = Object.fromEntries(layoutCases.map(([name, trackValues, item]) => {
     const track = {...baseTrack, ...trackValues};
     const clips = name === 'track-scale-no-positioned-siblings'
@@ -95,7 +100,7 @@ const publicResults = async (entry) => {
     fadeOutStart: opacityCase({}, {effects: {fade_out: .2}}, 54),
     fadeOutEnd: opacityCase({}, {effects: {fade_out: .2}}, 59),
   };
-  return {layouts, renderedLayouts, appearances};
+  return {layouts, legacyLayouts, renderedLayouts, appearances};
 };
 
 test('placement oracle: built 0.0.17 source and integration preserve public appearance', async () => {
@@ -115,11 +120,57 @@ test('placement oracle: built 0.0.17 source and integration preserve public appe
       publicResults(baselineEntry), publicResults(integrationEntry),
     ]);
 
-    // Add a case here only when a deliberate behavior change is approved and
-    // named. These are compared at the public geometry/evaluation boundary.
-    const intendedDifferences = {};
-    assert.deepEqual(Object.keys(intendedDifferences), [], 'unreviewed placement behavior difference');
-    assert.deepEqual(integration, baseline, 'placement/layout/opacity result differs from built 0.0.17 source');
+    for (const name of Object.keys(baseline.layouts)) {
+      if (name === 'track-scale-positioned-sibling-positioned') {
+        // App scale migration rounds the inverse box to two decimal places.
+        assert.deepEqual(baseline.layouts[name], {status:'known',rect:{x:0,y:0,width:1280,height:720}});
+        assert.deepEqual(integration.legacyLayouts[name], {status:'known',rect:{x:0.004000000000075943,y:0.004000000000019099,width:1279.9959999999999,height:719.996}});
+      } else assert.deepEqual(integration.legacyLayouts[name], baseline.layouts[name], `normalized legacy geometry: ${name}`);
+    }
+
+    // DOM digests are change detectors, not appearance proof. Pixel proof is separate.
+    // Approved changes: numeric media layout replaces object-fit; scale and
+    // blend live on the track group. Exact DOM pins make each change reviewable.
+    const expectedLayoutDom = {
+      "unpositioned-contain": "c688726b92bb983429ee69ea38ce1b5199138df8de0d5a0481fc577c2234939a",
+      "unpositioned-cover": "7683ee6857a30872d6fa5d37912204ab3fc4567deeb5ebc5243b449e59811bdb",
+      "unpositioned-manual": "dbbbbb2d2288672f69a59941a867af485838603cd2aae9548dd0a6c5e80ee144",
+      "explicit-neutral-x-zero": "12a2015792dcc1f5772744fa8c7644d9061ea6e767d1f6d7a692e58623c989d1",
+      "crop-only": "fe902cf2044d5cead7d1b4e69c8cb849593e299bb6c38d7aac1b5f8bbd79a032",
+      "crop-with-geometry": "ffc9a8d9004bcfea6865624819bf0369be44a63d6b8040a07579cb00b7c16eab",
+      "track-scale-alone": "483bddcd117accb77613805f5e799eb3080ae9704eff5e1e8119b9400513c989",
+      "track-scale-no-positioned-siblings": "335cd8800279fd0b790df771677125207cb722da350c719e12edda39f00e2fee",
+      "track-scale-positioned-sibling-unpositioned": "667e973106a7de80090dc0709693b6f71166a1a5970f1be5224fb5d690041e00",
+      "track-scale-positioned-sibling-positioned": "c93cdb45ef8b2c0f8b91c60abd1f0d1e6480c72fbd2c4454aaf947dbec4448b1"
+};
+    const expectedAppearanceDom = {
+      "clipOpacity": "918327f256c98cd57fee6b18ce216cde7e66e4bef2cd0cf228f6b2c4502d380b",
+      "trackOpacity": "d6be0c5eab05b5bb4ca820c7a2156c5f2d241da20e288764d4a1eebb61e552de",
+      "clipAndTrackOpacity": "d01a345813bcf524783b892ae45adccb5b812159283d5fe6b156283b41b6c2fa",
+      "fadeInStart": "b17be625c7f53f3ab635a1713d3c58f65e880fbb0afed8cb4cb31bbdfe63e8f1",
+      "fadeInMidpoint": "a64876af6fb033a2aabf8589b173dda259b36f4b84b12345351a50c213dc89d9",
+      "fadeOutStart": "b9e7c3fdc991d22e186e66e55c53147181fd90051c1794fedfdab8e10b26ff0f",
+      "fadeOutEnd": "6f88fce2bef4036b25d3f781be9bd6bdf5d2afd26f20682572dc4166cd620f84"
+};
+    const digest = text => createHash('sha256').update(text).digest('hex');
+    for (const [name, expected] of Object.entries(expectedLayoutDom)) {
+      assert.equal(digest(integration.renderedLayouts[name]), expected, `approved layout DOM: ${name}`);
+      if (['unpositioned-manual','crop-only','crop-with-geometry'].includes(name)) assert.equal(integration.renderedLayouts[name], baseline.renderedLayouts[name], `unchanged layout: ${name}`);
+      else assert.notEqual(integration.renderedLayouts[name], baseline.renderedLayouts[name], `layout changed: ${name}`);
+    }
+    for (const [name, expected] of Object.entries(expectedAppearanceDom)) {
+      const {rendered, ...actual} = integration.appearances[name];
+      const {rendered: oldRendered, ...old} = baseline.appearances[name];
+      assert.deepEqual(actual, old, `appearance evaluation: ${name}`);
+      assert.equal(digest(rendered), expected, `approved appearance DOM: ${name}`);
+      assert.notEqual(rendered, oldRendered, `appearance DOM changed: ${name}`);
+    }
+    for (const name of Object.keys(baseline.layouts)) {
+      if (name === 'crop-only') {
+        // Evaluation no longer infers cover from crop; normalization writes it for old projects.
+        assert.deepEqual(integration.layouts[name], {status: 'known', rect: {x:128,y:93.33333333333337,width:1024,height:533.3333333333333}});
+      } else assert.deepEqual(integration.layouts[name], baseline.layouts[name], `geometry: ${name}`);
+    }
     assert.match(baseline.renderedLayouts['unpositioned-contain'], /<img/);
     assert.match(baseline.renderedLayouts['unpositioned-contain'], /object-fit:contain/);
     assert.match(baseline.renderedLayouts['unpositioned-cover'], /object-fit:cover/);

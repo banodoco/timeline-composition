@@ -71,10 +71,11 @@ export const getIntrinsicMediaSize = (resolution?: string | null): IntrinsicMedi
     return {};
   }
 
-  const [widthText, heightText] = resolution.toLowerCase().split('x');
-  const width = Number(widthText);
-  const height = Number(heightText);
-  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+  const match = /^(\d+)x(\d+)$/i.exec(resolution);
+  if (!match) return {};
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return Number.isSafeInteger(width) && width > 0 && Number.isSafeInteger(height) && height > 0
     ? {width, height}
     : {};
 };

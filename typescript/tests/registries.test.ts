@@ -148,8 +148,8 @@ test('opaque meta does not change scene timing, asset selection, or rendered out
   )};
   const AssetProbe = ({assetEntry}: EffectProps) => createElement('b', {'data-file': assetEntry?.file}, 'asset');
   const registries = {effects: {'asset-probe': AssetProbe}};
-  const baseTimeline = {theme: 'default', tracks: [baseTrack], clips: baseClips};
-  const opaqueTimeline = {theme: 'default', tracks: [opaqueTrack], clips: opaqueClips, meta};
+  const baseTimeline = {theme: 'default', output: {resolution: '1920x1080'}, tracks: [baseTrack], clips: baseClips};
+  const opaqueTimeline = {theme: 'default', output: {resolution: '1920x1080'}, tracks: [opaqueTrack], clips: opaqueClips, meta};
   const before = JSON.stringify({timeline: opaqueTimeline, assets: opaqueAssets});
   const baseScene = prepareCompositionScene([{track: baseTrack, clips: baseClips}], baseAssets,
     30, theme, 1920, 1080, undefined, undefined, {}, '', {}, registries);

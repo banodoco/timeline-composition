@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {Internals} from 'remotion';
+import {TimelineComposition} from '../dist/index.js';
+const render = ({resolution='100x100', assetResolution='100x100', scale=1, blendMode='multiply', fit='contain', grouped=false, authoredCanvas, missingOutput=false, clipOverrides={}} = {}) => {
+  const track = {id:'v',kind:'visual',label:'V',scale,blendMode,opacity:.5,app:{clipPlacementVersion:1,scaleAppliesToPositionedClips:true}};
+  const clip = {id:'clip1',track:'v',asset:'asset1',at:0,hold:1,fit,...clipOverrides};
+  const tracks = grouped ? [{...track, id:'v1', app:{...track.app,group:{id:'shot'}}}, {...track,id:'v2',app:{...track.app,group:{id:'shot'}}}, {...track,id:'v3'}] : [track];
+  const clips = grouped ? tracks.map((item,index) => ({...clip,id:`clip${index}`,track:item.id})) : [clip];
+  const timeline = {theme:'default',...(authoredCanvas ? {theme_overrides:{visual:{canvas:authoredCanvas}}} : missingOutput ? {} : {output:{resolution}}),tracks,clips};
+  const assets = {assets:{asset1:{file:'https://example.test/a.png',type:'image/png',resolution:assetResolution}}};
+  const video = {id:'placement',width:100,height:100,fps:30,durationInFrames:30,defaultProps:{},folderName:null,parentFolderName:null,component:()=>null,nonce:[],schema:null,calculateMetadata:null,stack:null};
+  return renderToStaticMarkup(createElement(Internals.CompositionManager.Provider,{value:{compositions:[video],currentCompositionMetadata:null,folders:[],canvasContent:{type:'composition',compositionId:'placement'}}},createElement(Internals.TimelineContext.Provider,{value:{frame:{placement:0},playing:false,imperativePlaying:{current:false},audioAndVideoTags:{current:[]}}},createElement(Internals.CanUseRemotionHooksProvider,null,createElement(TimelineComposition,{timeline,assets})))));
+};
+test('track and media blend remain distinct, group opacity and conditional scale', () => {
+  const plain=render(); assert.equal((plain.match(/mix-blend-mode:multiply/g) ?? []).length,2); assert.match(plain,/opacity:0\.5/); assert.doesNotMatch(plain,/transform:scale\(1\)/);
+  for (const scale of [.5,2]) assert.match(render({scale}),new RegExp(`transform:scale\\(${scale}\\).*overflow:hidden`));
+});
+test('render refuses missing intrinsic media or a different output canvas', () => {
+  for (const fit of ['contain','cover']) for (const assetResolution of ['', 'bad', '1920x800x999', '1920.5x800', ' 1920x800', '1920x800 ', '0x800']) assert.throws(()=>render({fit,assetResolution}),/clip1.*asset1.*resolution/);
+  assert.throws(()=>render({resolution:'200x100'}),/output.resolution.*render canvas/);
+  assert.throws(()=>render({resolution:''}),/output.resolution/);
+});
+
+test('overlapping adjacent shot tracks share one isolated group in paint order', () => {
+  const html = render({grouped:true});
+  assert.equal((html.match(/data-shot-group="shot"/g) ?? []).length,1);
+  assert.match(html,/isolation:isolate" data-shot-group="shot"/);
+  assert.ok(html.indexOf('data-clip-id="clip2"') < html.indexOf('data-shot-group="shot"'));
+  assert.ok(html.indexOf('data-clip-id="clip1"') < html.indexOf('data-clip-id="clip0"'));
+});
+
+test('renderer normalizes authored legacy canvas before comparing execution dimensions', () => {
+  assert.match(render({authoredCanvas:{width:100,height:100,fps:30}}), /<img/);
+  assert.throws(() => render({authoredCanvas:{width:200,height:100,fps:30}}), /output.resolution.*render canvas/);
+});
+
+test('standalone media still refuses absent authored canvas', () => {
+  assert.throws(()=>render({missingOutput:true}),/clip1.*output.resolution.*App project settings/);
+});
+
+test('distinctive resolved viewport and media rectangles are drawn unchanged', () => {
+  const html=render({fit:'cover',assetResolution:'200x100',clipOverrides:{x:10,y:20,width:50,height:30}});
+  assert.match(html,/left:10px;top:20px;width:50px;height:30px;overflow:hidden/);
+  assert.match(html,/<img style="position:absolute;left:-5px;top:0;width:60px;height:30px/);
+});

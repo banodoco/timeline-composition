@@ -29,6 +29,7 @@ import {
 } from './evaluation';
 import {TransitionLayer} from './TransitionLayer';
 import {mediaModifierBounds} from './lib/modifier-bounds';
+import {normalizeClipPlacement, resolveTrackTransform} from './lib/placement';
 import type {ModifierRegistry, ModifierFinding, ModifierBounds} from './modifier-types';
 import {ModifierAdmissionError, hasModifierKeyframes} from './modifiers';
 import type {
@@ -50,19 +51,6 @@ type ModifierHostOptions = {
 
 const sortClipsByAt = (clips: TimelineClip[]): TimelineClip[] => {
   return [...clips].sort((left, right) => left.at - right.at);
-};
-
-const hasPositionOverride = (clip: TimelineClip): boolean => {
-  return (
-    clip.x !== undefined
-    || clip.y !== undefined
-    || clip.width !== undefined
-    || clip.height !== undefined
-    || clip.cropTop !== undefined
-    || clip.cropBottom !== undefined
-    || clip.cropLeft !== undefined
-    || clip.cropRight !== undefined
-  );
 };
 
 const getAssetEntry = (
@@ -111,7 +99,7 @@ export const renderVisualClipContent = (
   }
 
   const assetEntry = getAssetEntry(clip, assets);
-  const modifierBounds: ModifierBounds = mediaModifierBounds(clip, track, assetEntry, modifiers.width, modifiers.height);
+  const modifierBounds: ModifierBounds = mediaModifierBounds(clip, track, assetEntry, modifiers.width, modifiers.height, 'local');
   const lookProps = {registries, clip, fps, globalFrame, modifierBounds, modifierRegistry: modifiers.registry,
     onModifierFinding: modifiers.onFinding};
   const baseVisual = (
@@ -119,26 +107,6 @@ export const renderVisualClipContent = (
       applyOpacity={(clip.modifiers?.length ?? 0) === 0} />
   );
 
-  if (hasPositionOverride(clip)) {
-    return <ClipLook {...lookProps} kind="media">{baseVisual}</ClipLook>;
-  }
-
-  if ((track.scale ?? 1) !== 1) {
-    return (
-      <ClipLook {...lookProps} kind="media">
-        <AbsoluteFill
-          style={{
-            transform: `scale(${track.scale})`,
-            transformOrigin: 'center center',
-            overflow: 'hidden',
-            isolation: 'isolate',
-          }}
-        >
-          {baseVisual}
-        </AbsoluteFill>
-      </ClipLook>
-    );
-  }
 
   return <ClipLook {...lookProps} kind="media">{baseVisual}</ClipLook>;
 };
@@ -253,6 +221,9 @@ export const prepareCompositionScene = (tracks: {track: TrackDefinition; clips: 
   width: number, height: number, registry?: ModifierRegistry, roles?: Readonly<Record<string, string>>,
   capabilities: SceneCapabilities = {}, rendererIdentity = '', fontDigests: Readonly<Record<string, string>> = {},
   registries: CompositionRegistries = {}, compiledTransitions?: CompiledCanonicalTransitions) => {
+  const normalized = normalizeClipPlacement({theme: '', output: {resolution: `${width}x${height}`},
+    tracks: tracks.map(input => input.track), clips: tracks.flatMap(input => input.clips)});
+  tracks = normalized.tracks!.map(track => ({track, clips: normalized.clips.filter(clip => clip.track === track.id)}));
   validateCompiledCanonicalTransitions(compiledTransitions, fps);
   if (compiledTransitions !== undefined) assertCanonicalTransitionsMatch(tracks, fps, theme, registries, compiledTransitions);
   const resolved = resolveElementRegistries(theme, registries);
@@ -295,11 +266,13 @@ const renderVisualTrack = (
   const rendered = evaluated.layers.map(layer => renderVisualSequence(track, clips[layer.clipIndex],
     assets, fps, theme, prepared.tracks[0].prepared.plans[layer.clipIndex], globalFrame, modifiers));
 
+  const transform = resolveTrackTransform(track, {width: modifiers.width, height: modifiers.height}).forward;
   return (
     <AbsoluteFill
       key={track.id}
       style={{
         opacity: track.opacity ?? 1,
+        ...(transform.scale !== 1 ? {transform: `scale(${transform.scale})`, transformOrigin: 'center center', overflow: 'hidden' as const} : {}),
         mixBlendMode: track.blendMode && track.blendMode !== 'normal' ? track.blendMode : undefined,
       }}
     >
@@ -330,8 +303,21 @@ export const renderAudioTrack = (
 };
 
 export const TimelineComposition = (props: TimelineCompositionProps): ReactElement => {
-  const {timeline, assets} = props;
+  const {assets} = props;
   const {fps, width, height} = useVideoConfig();
+  const timeline = useMemo(() => {
+    const normalized = normalizeClipPlacement(props.timeline);
+    const resolution = (normalized.output as {resolution?: string} | undefined)?.resolution;
+    if (resolution === undefined) {
+      const visualTracks = new Set((normalized.tracks ?? []).filter(track => track.kind === 'visual').map(track => track.id));
+      const clip = normalized.clips.find(item => visualTracks.has(item.track) && !!item.asset);
+      if (clip) throw new Error(`Clip '${clip.id}' requires timeline output.resolution; open and save in the editor, or set the authored output in App project settings before rendering`);
+    }
+    if (resolution !== undefined && resolution.toLowerCase() !== `${width}x${height}`) {
+      throw new Error(`Timeline property output.resolution '${resolution}' does not match render canvas ${width}x${height}`);
+    }
+    return normalized;
+  }, [props.timeline, width, height]);
   // Props are immutable snapshots. Validate once per compiled input / render
   // clock instead of repeating a whole-vector walk on every Remotion frame.
   useMemo(() => validateCompiledCanonicalTransitions(props.compiledTransitions, fps),
@@ -368,6 +354,20 @@ export const TimelineComposition = (props: TimelineCompositionProps): ReactEleme
 // HypeComposition name yet. The exported component identity is the same.
 export const HypeComposition = TimelineComposition;
 export type {HypeCompositionProps, TimelineCompositionProps};
+
+
+// Adjacent tracks in the same shot share an isolated compositing stack.
+const partitionPreparedTracks = <T extends {track: TrackDefinition}>(tracks: T[]): {id?: string; tracks: T[]}[] => {
+  const groups: {id?: string; tracks: T[]}[] = [];
+  for (const item of tracks) {
+    const group = item.track.app?.group as {id?: unknown} | undefined;
+    const id = typeof group?.id === 'string' && group.id.length > 0 ? group.id : undefined;
+    const previous = groups[groups.length - 1];
+    if (id && previous?.id === id) previous.tracks.push(item);
+    else groups.push({id, tracks: [item]});
+  }
+  return groups;
+};
 
 const TimelineCompositionBody = ({
   timeline,
@@ -408,8 +408,11 @@ const TimelineCompositionBody = ({
   return (
     <>
       <AbsoluteFill style={{position: 'relative', overflow: 'hidden'}}>
-        {preparedVisualTracks.map(({track, clips, prepared}) =>
-          renderVisualTrack(track, clips, assets, fps, theme, globalFrame, modifiers, prepared))}
+        {partitionPreparedTracks(preparedVisualTracks).map((group, index) => {
+          const children = group.tracks.map(({track, clips, prepared}) =>
+            renderVisualTrack(track, clips, assets, fps, theme, globalFrame, modifiers, prepared));
+          return group.id ? <AbsoluteFill key={`${group.id}:${index}`} data-shot-group={group.id} style={{isolation: 'isolate'}}>{children}</AbsoluteFill> : children;
+        })}
       </AbsoluteFill>
       {audioTracks.map((track) => {
         const clips = timeline.clips.filter((clip) => clip.track === track.id);
